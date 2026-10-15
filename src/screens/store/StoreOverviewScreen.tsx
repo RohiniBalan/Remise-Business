@@ -1,0 +1,387 @@
+import React, { useMemo } from 'react';
+import { View, Text, Image, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { GATEWAY_URL } from '../../api/endpoints';
+import { Package, Tag, ShoppingBag, IndianRupee, Clock, AlertCircle, TrendingUp, Target, Store, CheckCircle2, Star } from 'lucide-react-native';
+import { useStoreDashboard } from '../../context/StoreDashboardContext';
+import { useTheme } from '../../context/ThemeContext';
+import { CustomerColors, Spacing, FontSizes, BorderRadius, Shadows } from '../../styles/theme';
+import { resolveImageUrl } from '../../utils/imageUrl';
+import { useTranslation, translateProductName, translateCategory } from '../../i18n';
+
+export default function StoreOverviewScreen() {
+  const navigation = useNavigation<any>();
+  const { store, offers, orders, products, loading, loadError, refresh } = useStoreDashboard();
+  const { isDark } = useTheme();
+  const { t, language } = useTranslation();
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+
+  const totalProductsSold = useMemo(
+    () => orders.reduce((s, o: any) => s + (o.quantity || 0), 0),
+    [orders],
+  );
+
+  const monthDeliveredRevenue = useMemo(() => {
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    return orders
+      .filter((o: any) => o.status === 'Delivered' && new Date(o.createdAt) >= monthStart)
+      .reduce((s, o: any) => s + (o.totalAmount || 0), 0);
+  }, [orders]);
+
+  const stats = useMemo(() => {
+    const totalRevenue = orders.filter(o => o.status === 'Delivered').reduce((s, o) => s + (o.totalAmount || 0), 0);
+    const offerRevenue = orders
+      .filter((o: any) => o.status === 'Delivered' && o._source !== 'smartOrder')
+      .reduce((s: number, o: any) => s + (o.totalAmount || 0), 0);
+    const activeOffers = offers.filter(o => o.isActive && new Date(o.validUntil) > new Date()).length;
+    const pendingOrders = orders.filter(o => o.status === 'Pending').length;
+    const lowStock = products.filter(p => p.totalStock < 5 && p.availability !== 'Out Of Stock').length;
+    return [
+      { label: t('store.totalProducts'), value: products.length, icon: Package, color: isDark ? '#A78BFA' : '#7C3AED' },
+      { label: t('store.activeOffers'), value: activeOffers, icon: Tag, color: isDark ? '#2DD4BF' : CustomerColors.teal700 },
+      { label: t('store.totalOrders'), value: orders.length, icon: ShoppingBag, color: isDark ? '#60A5FA' : '#2563EB' },
+      { label: `${t('store.totalRevenue')} (₹)`, value: `₹${totalRevenue.toLocaleString('en-IN')}`, icon: IndianRupee, color: isDark ? '#34D399' : CustomerColors.success },
+      { label: t('store.pendingOrders'), value: pendingOrders, icon: Clock, color: pendingOrders > 0 ? (isDark ? '#F87171' : CustomerColors.primary) : (isDark ? '#9CA3AF' : '#6B7280') },
+      { label: `${t('store.offerRevenue')} (₹)`, value: `₹${offerRevenue.toLocaleString('en-IN')}`, icon: IndianRupee, color: isDark ? '#34D399' : CustomerColors.success },
+      { label: t('store.lowStock'), value: lowStock, icon: AlertCircle, color: lowStock > 0 ? (isDark ? '#FBBF24' : '#D97706') : (isDark ? '#9CA3AF' : '#6B7280') },
+    ];
+  }, [offers, orders, products, isDark, t]);
+
+  const recentOrders = useMemo(() => [...orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5), [orders]);
+  const topProducts = useMemo(() => [...products].sort((a, b) => b.totalStock - a.totalStock).slice(0, 4), [products]);
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={isDark ? '#2DD4BF' : CustomerColors.primary} />
+      </View>
+    );
+  }
+
+  const target = store?.targetRevenue || 0;
+  const pct = target > 0 ? Math.min(100, Math.round((monthDeliveredRevenue / target) * 100)) : 0;
+
+  return (
+    <FlatList
+      style={styles.container}
+      contentContainerStyle={{ padding: Spacing.md, paddingBottom: Spacing.xxl }}
+      refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} tintColor={isDark ? '#2DD4BF' : undefined} />}
+      data={[]}
+      keyExtractor={() => '_'}
+      renderItem={null}
+      ListHeaderComponent={
+        <View>
+          {loadError ? (
+            <View style={styles.errorBanner}><Text style={styles.errorText}>{loadError}</Text></View>
+          ) : null}
+
+          {/* ── Store Brand & Logo Card ── */}
+          <View style={styles.storeHeaderCard}>
+            <View style={styles.storeLogoWrap}>
+              {store?.logo ? (
+                <Image source={{ uri: resolveImageUrl(store.logo) }} style={styles.storeLogo} />
+              ) : (
+                <Store size={26} color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+              )}
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.storeNameText} numberOfLines={1}>{store?.name || 'My Store'}</Text>
+                {store?.isVerified ? (
+                  <CheckCircle2 size={16} color={CustomerColors.success} />
+                ) : null}
+              </View>
+              <Text style={styles.storeCategoryText}>{store?.category ? translateCategory(store.category, language) : 'General Store'}</Text>
+              {store?.phone ? <Text style={styles.storePhoneText}>{store.phone}</Text> : null}
+            </View>
+            <TouchableOpacity
+              style={styles.ratingHeaderBadge}
+              onPress={() => navigation.navigate('StoreReviews')}
+              activeOpacity={0.7}
+            >
+              <Star size={13} color="#D97706" fill="#D97706" />
+              <Text style={styles.ratingHeaderText}>
+                {store?.rating ? Number(store.rating).toFixed(1) : 'New'}
+              </Text>
+              <Text style={styles.reviewCountHeaderText}>
+                ({store?.reviewCount || 0})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ── Target Revenue card ── */}
+          <View style={styles.targetCard}>
+            <View style={styles.targetHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Target size={16} color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+                <Text style={styles.targetTitle}>{t('store.revenueTarget')}</Text>
+              </View>
+              {target === 0 && (
+                <TouchableOpacity onPress={() => navigation.navigate('StoreSettings')}>
+                  <Text style={styles.link}>{t('store.setTarget')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {target > 0 ? (
+              <>
+                <Text style={styles.targetAmounts}>
+                  ₹{monthDeliveredRevenue.toLocaleString('en-IN')}{' '}
+                  <Text style={styles.targetOf}>of ₹{target.toLocaleString('en-IN')}</Text>
+                </Text>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${pct}%` }]} />
+                </View>
+                <Text style={styles.targetPct}>{pct}% {t('store.targetAchieved')} ({t('store.thisMonth')})</Text>
+              </>
+            ) : (
+              <Text style={styles.targetEmpty}>{t('store.setMonthlyTargetDesc')}</Text>
+            )}
+          </View>
+
+          <View style={styles.statsGrid}>
+            <View style={styles.statCard}>
+              <TrendingUp size={18} color={isDark ? '#A78BFA' : '#7C3AED'} />
+              <Text style={[styles.statValue, { color: isDark ? '#A78BFA' : '#7C3AED' }]}>{totalProductsSold}</Text>
+              <Text style={styles.statLabel} numberOfLines={1}>{t('store.totalProductsSold')}</Text>
+            </View>
+            {stats.map(s => (
+              <View key={s.label} style={styles.statCard}>
+                <s.icon size={18} color={s.color} />
+                <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
+                <Text style={styles.statLabel} numberOfLines={1}>{s.label}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{t('store.recentOrders')}</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('StoreOwnerOrders')}><Text style={styles.link}>View all</Text></TouchableOpacity>
+            </View>
+            {recentOrders.length === 0 ? (
+              <Text style={styles.emptyText}>No orders yet</Text>
+            ) : (
+              recentOrders.map(o => (
+                <View key={o._id} style={styles.listRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.listRowTitle} numberOfLines={1}>
+                      {o.rawItems && o.rawItems.length
+                        ? o.rawItems.map((it: any) => `${it.quantity || 1}x ${translateProductName(it.title, language)}`).join(', ')
+                        : o.offerTitle
+                          ? translateProductName(o.offerTitle, language)
+                          : o.customerName}
+                    </Text>
+                    <Text style={styles.listRowSub}>{o.customerName}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.listRowAmount}>₹{o.totalAmount}</Text>
+                    <Text style={styles.listRowStatus}>{o.status}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{t('store.productStock')}</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Products')}><Text style={styles.link}>Manage</Text></TouchableOpacity>
+            </View>
+            {topProducts.length === 0 ? (
+              <Text style={styles.emptyText}>No products yet</Text>
+            ) : (
+              topProducts.map(p => (
+                <View key={p._id} style={styles.listRow}>
+                  <Image source={{ uri: resolveImageUrl(p.images?.[0] || p.imageUrl) }} style={styles.productThumb} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.listRowTitle} numberOfLines={1}>{translateProductName(p.title, language)}</Text>
+                    <Text style={styles.listRowSub}>{p.category ? translateCategory(p.category, language) : '—'}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[styles.listRowAmount, p.totalStock < 5 && { color: isDark ? '#FBBF24' : '#D97706' }]}>{p.totalStock} {t('store.left')}</Text>
+                    <Text style={styles.listRowSub}>₹{p.discountedPrice || p.price}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+
+          {!store?.isVerified && (
+            <View style={styles.verificationBanner}>
+              <AlertCircle size={16} color={isDark ? '#FBBF24' : '#D97706'} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.verificationTitle}>Store Verification Pending</Text>
+                <Text style={styles.verificationText}>Our team will review and verify your store shortly.</Text>
+              </View>
+            </View>
+          )}
+        </View>
+      }
+    />
+  );
+}
+
+const getStyles = (isDark: boolean) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: isDark ? '#0a0f1d' : CustomerColors.bg },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0a0f1d' : CustomerColors.bg },
+    errorBanner: {
+      backgroundColor: isDark ? '#451a03' : '#FFFBEB',
+      borderWidth: 1,
+      borderColor: isDark ? '#78350f' : '#FDE68A',
+      borderRadius: BorderRadius.md,
+      padding: Spacing.md,
+      marginBottom: Spacing.md,
+    },
+    errorText: { fontSize: FontSizes.xs, color: isDark ? '#fde68a' : '#92400E' },
+    storeHeaderCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.md,
+      backgroundColor: isDark ? '#111827' : CustomerColors.white,
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+      borderColor: isDark ? '#1f2937' : CustomerColors.steelBorder,
+      padding: Spacing.md,
+      marginBottom: Spacing.md,
+      ...Shadows.card,
+    },
+    storeLogoWrap: {
+      width: 54,
+      height: 54,
+      borderRadius: BorderRadius.md,
+      backgroundColor: isDark ? '#1e293b' : '#DFF1F1',
+      borderWidth: 1,
+      borderColor: isDark ? '#334155' : '#BBD5DA',
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    storeLogo: {
+      width: '100%',
+      height: '100%',
+      resizeMode: 'cover',
+    },
+    storeNameText: {
+      fontSize: FontSizes.md,
+      fontWeight: '800',
+      color: isDark ? '#F8FAFC' : CustomerColors.black,
+    },
+    storeCategoryText: {
+      fontSize: FontSizes.xs,
+      color: isDark ? '#94A3B8' : CustomerColors.textSecondary,
+      marginTop: 2,
+    },
+    storePhoneText: {
+      fontSize: 11,
+      color: isDark ? '#64748B' : '#6B7280',
+      marginTop: 1,
+    },
+    ratingHeaderBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7',
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: BorderRadius.pill,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(245, 158, 11, 0.3)' : '#FDE68A',
+    },
+    ratingHeaderText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: '#D97706',
+    },
+    reviewCountHeaderText: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: isDark ? '#9CA3AF' : '#9CA3AF',
+    },
+    targetCard: {
+      backgroundColor: isDark ? '#111827' : CustomerColors.white,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
+      borderColor: isDark ? '#374151' : CustomerColors.steelBorder,
+      padding: Spacing.md,
+      marginBottom: Spacing.lg,
+      ...Shadows.card,
+    },
+    targetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xs },
+    targetTitle: { fontSize: FontSizes.sm, fontWeight: '800', color: isDark ? '#FFFFFF' : CustomerColors.black },
+    targetAmounts: { fontSize: FontSizes.md, fontWeight: '800', color: isDark ? '#2DD4BF' : CustomerColors.teal700, marginTop: Spacing.xs },
+    targetOf: { fontSize: FontSizes.xs, fontWeight: '600', color: isDark ? '#9CA3AF' : CustomerColors.textSecondary },
+    progressTrack: { height: 8, borderRadius: 4, backgroundColor: isDark ? '#1F2937' : '#F5F5F5', marginTop: Spacing.sm, overflow: 'hidden' },
+    progressFill: { height: '100%', borderRadius: 4, backgroundColor: isDark ? '#2DD4BF' : CustomerColors.teal600 },
+    targetPct: { fontSize: FontSizes.xs, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary, marginTop: 6 },
+    targetEmpty: { fontSize: FontSizes.xs, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary, marginTop: Spacing.xs },
+    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.lg },
+    statCard: {
+      width: '31%',
+      minHeight: 92,
+      backgroundColor: isDark ? '#111827' : CustomerColors.white,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
+      borderColor: isDark ? '#374151' : CustomerColors.steelBorder,
+      padding: Spacing.sm,
+      ...Shadows.card,
+    },
+    statValue: { fontSize: FontSizes.md, fontWeight: '800', marginTop: 4 },
+    statLabel: { fontSize: 10, color: isDark ? '#FFFFFF' : CustomerColors.textSecondary, marginTop: 2 },
+    section: {
+      backgroundColor: isDark ? '#111827' : CustomerColors.white,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
+      borderColor: isDark ? '#374151' : CustomerColors.steelBorder,
+      marginBottom: Spacing.md,
+      overflow: 'hidden',
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: Spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? '#1F2937' : '#F5F5F5',
+    },
+    sectionTitle: { fontSize: FontSizes.sm, fontWeight: '800', color: isDark ? '#FFFFFF' : CustomerColors.black },
+    link: { fontSize: FontSizes.xs, color: isDark ? '#2DD4BF' : CustomerColors.teal600, fontWeight: '700' },
+    emptyText: { textAlign: 'center', color: isDark ? '#9CA3AF' : CustomerColors.textSecondary, fontSize: FontSizes.sm, padding: Spacing.lg },
+    listRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      padding: Spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? '#1F2937' : '#F5F5F5',
+    },
+    productThumb: { width: 36, height: 36, borderRadius: BorderRadius.sm, backgroundColor: isDark ? '#1F2937' : '#F5F5F5' },
+    listRowTitle: { fontSize: FontSizes.sm, fontWeight: '700', color: isDark ? '#FFFFFF' : CustomerColors.black },
+    listRowSub: { fontSize: FontSizes.xs, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary },
+    listRowAmount: { fontSize: FontSizes.sm, fontWeight: '700', color: isDark ? '#2DD4BF' : CustomerColors.teal700 },
+    listRowStatus: { fontSize: 10, color: isDark ? '#FFFFFF' : CustomerColors.textSecondary },
+    verificationBanner: {
+      flexDirection: 'row',
+      gap: Spacing.sm,
+      backgroundColor: isDark ? '#451a03' : '#FFFBEB',
+      borderWidth: 1,
+      borderColor: isDark ? '#78350f' : '#FDE68A',
+      borderRadius: BorderRadius.md,
+      padding: Spacing.md,
+    },
+    verificationTitle: { fontSize: FontSizes.sm, fontWeight: '800', color: isDark ? '#fde68a' : '#92400E' },
+    verificationText: { fontSize: FontSizes.xs, color: isDark ? '#fde68a' : '#92400E', marginTop: 2 },
+    topIconRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.sm, marginBottom: Spacing.md },
+    iconBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: isDark ? '#111827' : CustomerColors.white,
+      borderWidth: 1,
+      borderColor: isDark ? '#1F2937' : CustomerColors.steelBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconBadge: { position: 'absolute', top: -2, right: -2, backgroundColor: CustomerColors.primary, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+    iconBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  });

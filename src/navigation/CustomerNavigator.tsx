@@ -1,0 +1,633 @@
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
+import {
+  Home,
+  LayoutGrid,
+  ClipboardList,
+  MapPin,
+  Heart,
+  ShoppingCart,
+  Package,
+  User,
+  ArrowLeft,
+  Store,
+  LayoutDashboard,
+} from 'lucide-react-native';
+import PlaceholderScreen from '../screens/common/PlaceholderScreen';
+import LoginRegisterScreen from '../screens/auth/LoginRegisterScreen';
+import HomeScreen from '../screens/customer/HomeScreen';
+import CategoryScreen from '../screens/customer/CategoryScreen';
+import CategoryGridScreen from '../screens/customer/CategoryGridScreen';
+import ProductDetailScreen from '../screens/customer/ProductDetailScreen';
+import CartScreen from '../screens/customer/CartScreen';
+import BestSellersScreen from '../screens/customer/BestSellersScreen';
+import NewArrivalsScreen from '../screens/customer/NewArrivalsScreen';
+import CheckoutScreen from '../screens/customer/CheckoutScreen';
+import PhonePeWebViewScreen from '../screens/customer/PhonePeWebViewScreen';
+import RazorpayWebViewScreen from '../screens/customer/RazorpayWebViewScreen';
+import PaymentStatusScreen from '../screens/customer/PaymentStatusScreen';
+import OrdersScreen from '../screens/customer/OrdersScreen';
+import SettingsScreen from '../screens/customer/SettingsScreen';
+import ProfileScreen from '../screens/customer/ProfileScreen';
+import BulkPurchaseScreen from '../screens/customer/BulkPurchaseScreen';
+import CompareStoresScreen from '../screens/customer/CompareStoresScreen';
+import NearbyOffersScreen from '../screens/customer/NearbyOffersScreen';
+import NotificationsScreen from '../screens/customer/NotificationsScreen';
+import AboutScreen from '../screens/customer/AboutScreen';
+import ServicesScreen from '../screens/customer/ServicesScreen';
+import TestimonialsScreen from '../screens/customer/TestimonialsScreen';
+import StoreRegisterScreen from '../screens/customer/StoreRegisterScreen';
+import SuppliersScreen from '../screens/customer/SuppliersScreen';
+import MyOffersScreen from '../screens/customer/MyOffersScreen';
+import HelpCenterScreen from '../screens/customer/HelpCenterScreen';
+import PrivacyPolicyScreen from '../screens/customer/PrivacyPolicyScreen';
+import TermsOfServiceScreen from '../screens/customer/TermsOfServiceScreen';
+import SitemapScreen from '../screens/customer/SitemapScreen';
+import WishlistScreen from '../screens/customer/WishlistScreen';
+import ReturnsRefundsScreen from '../screens/customer/ReturnsRefundsScreen';
+import CareersScreen from '../screens/customer/CareersScreen';
+import BlogScreen from '../screens/customer/BlogScreen';
+import PressScreen from '../screens/customer/PressScreen';
+import OrderTrackingScreen from '../screens/customer/OrderTrackingScreen';
+import OrderDetailScreen from '../screens/customer/OrderDetailScreen';
+import MyCreditScreen from '../screens/customer/MyCreditScreen';
+import DeliveryPartnerApplicationScreen from '../screens/delivery/DeliveryPartnerApplicationScreen';
+import DeliveryPartnerDashboardScreen from '../screens/delivery/DeliveryPartnerDashboardScreen';
+import { SmartOrderCartItem } from '../api/smartOrderApi';
+import { CustomerColors } from '../styles/theme';
+import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
+import { useWishlist } from '../context/WishlistContext';
+import { useTheme } from '../context/ThemeContext';
+import { useTranslation, translateCategory } from '../i18n';
+import { useDeliveryPartnerTranslations } from '../i18n/deliveryPartnerTranslations';
+import { isDeliveryPartnerUser, navigateToDeliveryDashboard } from '../utils/deliveryPartnerHelper';
+import { isAdminUser, navigateToAdminDashboard } from '../utils/adminHelper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+export type CustomerTabParamList = {
+  Home: undefined;
+  Categories: undefined;
+  BulkPurchase: undefined;
+  Suppliers: undefined;
+  Nearby: undefined;
+  Wishlist: undefined;
+  Orders: undefined;
+  Cart: undefined;
+  Profile: undefined;
+};
+
+export type HomeStackParamList = {
+  HomeScreen: undefined;
+  BestSellers: undefined;
+  NewArrivals: undefined;
+  Suppliers: undefined;
+  DeliveryPartnerDashboard: undefined;
+};
+
+export type CategoriesStackParamList = {
+  CategoryGrid: undefined;
+  CategoryProducts: { category?: string } | undefined;
+};
+
+export type CustomerStackParamList = {
+  CustomerTabs: undefined;
+  ProductDetail: { productId: string };
+  Cart: undefined;
+  Checkout: undefined;
+  PhonePeWebView: { payUrl: string };
+  RazorpayWebView: { options: any; orderId: string };
+  PaymentStatus: { orderId: string; status?: string };
+  Settings: undefined;
+  Profile: undefined;
+  About: undefined;
+  Services: undefined;
+  Testimonials: undefined;
+  StoreRegister: undefined;
+  CompareStores: {
+    items: SmartOrderCartItem[];
+    purchaseType?: 'bulk' | 'home_seller';
+    onSuccess?: () => void;
+  };
+  BulkPurchase: undefined;
+  Nearby: undefined;
+
+  Notifications: undefined;
+  Suppliers: undefined;
+  MyOffers: undefined;
+  BestSellers: undefined;
+  NewArrivals: undefined;
+  HelpCenter: undefined;
+  PrivacyPolicy: undefined;
+  TermsOfUse: undefined;
+  TermsOfService: undefined;
+  Sitemap: undefined;
+  Wishlist: undefined;
+  LoginRegister: undefined;
+  Returns: undefined;
+  ReturnsRefunds: undefined;
+  Careers: undefined;
+  Blog: undefined;
+  BlogNews: undefined;
+  Press: undefined;
+  OrderTracking: { orderId: string };
+  OrderDetail: { orderId: string };
+  MyCredit: undefined;
+  DeliveryPartnerApplication: undefined;
+  DeliveryDashboard: undefined;
+  DeliveryPartnerDashboard: undefined;
+};
+
+const Tab = createBottomTabNavigator<CustomerTabParamList>();
+const Stack = createNativeStackNavigator<CustomerStackParamList>();
+const HomeStack = createNativeStackNavigator<HomeStackParamList>();
+const CategoriesStack = createNativeStackNavigator<CategoriesStackParamList>();
+
+// Nested stack inside the Home tab — keeps the bottom tab bar visible
+// when navigating to Best Sellers, New Arrivals, or Suppliers.
+function HomeNavigator() {
+  return (
+    <HomeStack.Navigator screenOptions={{ headerShown: false }}>
+      <HomeStack.Screen name="HomeScreen" component={HomeScreen} />
+      <HomeStack.Screen name="BestSellers" component={BestSellersScreen} />
+      <HomeStack.Screen name="NewArrivals" component={NewArrivalsScreen} />
+      <HomeStack.Screen name="Suppliers" component={SuppliersScreen} />
+      <HomeStack.Screen name="DeliveryPartnerDashboard" component={DeliveryPartnerDashboardScreen} />
+    </HomeStack.Navigator>
+  );
+}
+
+// Nested stack inside the Categories tab — keeps the bottom tab bar visible
+// when navigating from the category grid to the product listing.
+function CategoriesNavigator() {
+  const { isDark } = useTheme();
+  const { t, language } = useTranslation();
+  return (
+    <CategoriesStack.Navigator screenOptions={{ headerShown: false }}>
+      <CategoriesStack.Screen
+        name="CategoryGrid"
+        component={CategoryGridScreen}
+      />
+      <CategoriesStack.Screen
+        name="CategoryProducts"
+        component={CategoryScreen}
+        options={({ route, navigation }: any) => ({
+          headerShown: true,
+          title: route.params?.category
+            ? translateCategory(route.params.category, language)
+            : (t('common.categories') || 'Products'),
+          headerStyle: {
+            backgroundColor: isDark ? '#0f172a' : '#FFFFFF',
+          },
+          headerTintColor: isDark ? '#FFFFFF' : CustomerColors.black,
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  navigation.navigate('CategoryGrid');
+                }
+              }}
+              style={{ marginRight: 12 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <ArrowLeft
+                size={22}
+                color={isDark ? '#FFFFFF' : CustomerColors.black}
+              />
+            </TouchableOpacity>
+          ),
+        })}
+      />
+    </CategoriesStack.Navigator>
+  );
+}
+
+function CustomerTabs() {
+  const navigation = useNavigation<any>();
+  const { user } = useAuth();
+  const { cartCount } = useCart();
+  const { wishlistCount } = useWishlist();
+  const { isDark } = useTheme();
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const isAdmin = isAdminUser(user);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: CustomerColors.primary,
+        tabBarInactiveTintColor: isDark ? '#94A3B8' : '#4B5563',
+        tabBarStyle: {
+          backgroundColor: isDark ? '#0B1120' : '#FFFFFF',
+          borderTopColor: isDark ? '#1E293B' : '#E2E8F0',
+          height: 60 + insets.bottom,
+          paddingBottom: 6 + insets.bottom,
+          paddingTop: 4,
+        },
+        tabBarLabelStyle: {
+          fontSize: 9,
+          fontWeight: '700',
+        },
+        tabBarItemStyle: {
+          paddingHorizontal: 1,
+        },
+      }}
+    >
+      <Tab.Screen
+        name="Home"
+        component={HomeNavigator}
+        options={{
+          tabBarLabel: t('common.tabHome') || 'Home',
+          tabBarIcon: ({ color, size }) => <Home color={color} size={20} />,
+        }}
+      />
+      <Tab.Screen
+        name="Categories"
+        component={CategoriesNavigator}
+        options={{
+          tabBarLabel: t('common.tabCategories') || 'Categories',
+          tabBarIcon: ({ color, size }) => (
+            <LayoutGrid color={color} size={20} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="BulkPurchase"
+        component={BulkPurchaseScreen}
+        options={{
+          tabBarLabel: t('common.tabBulk') || 'Bulk',
+          tabBarIcon: ({ color, size }) => (
+            <ClipboardList color={color} size={20} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Nearby"
+        component={NearbyOffersScreen}
+        options={{
+          tabBarLabel: t('common.tabNearby') || 'Nearby',
+          tabBarIcon: ({ color, size }) => <MapPin color={color} size={20} />,
+        }}
+      />
+      <Tab.Screen
+        name="Wishlist"
+        component={WishlistScreen}
+        options={{
+          tabBarLabel: t('common.tabWishlist') || 'Wishlist',
+          tabBarIcon: ({ color, size }) => <Heart color={color} size={20} />,
+          tabBarBadge: wishlistCount > 0 ? wishlistCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: CustomerColors.primary,
+            fontSize: 9,
+            minWidth: 16,
+            height: 16,
+          },
+        }}
+      />
+      <Tab.Screen
+        name="Orders"
+        component={OrdersScreen}
+        options={{
+          tabBarLabel: t('common.tabOrders') || 'Orders',
+          tabBarIcon: ({ color, size }) => <Package color={color} size={20} />,
+        }}
+      />
+      <Tab.Screen
+        name="Cart"
+        component={CartScreen}
+        options={{
+          tabBarLabel: t('common.tabCart') || 'Cart',
+          tabBarIcon: ({ color, size }) => (
+            <ShoppingCart color={color} size={20} />
+          ),
+          tabBarBadge: cartCount > 0 ? cartCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: CustomerColors.primary,
+            fontSize: 9,
+            minWidth: 16,
+            height: 16,
+          },
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: user ? (t('common.tabProfile') || 'Profile') : (t('common.tabAccount') || 'Account'),
+          tabBarIcon: ({ color, size, focused }) => {
+            if (user) {
+              const initials = (user.fullname || user.name || user.email || 'U')
+                .trim()
+                .slice(0, 2)
+                .toUpperCase();
+              return (
+                <View
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 11,
+                    backgroundColor: focused
+                      ? CustomerColors.primary
+                      : '#E2E8F0',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 9.5,
+                      fontWeight: '800',
+                      color: focused ? '#FFFFFF' : CustomerColors.textSecondary,
+                    }}
+                  >
+                    {initials}
+                  </Text>
+                </View>
+              );
+            }
+            return <User color={color} size={20} />;
+          },
+        }}
+      />
+    </Tab.Navigator>
+
+      {isAdmin && (
+        <TouchableOpacity
+          onPress={() => navigateToAdminDashboard(navigation)}
+          style={[
+            styles.adminFloatingPill,
+            { bottom: 66 + insets.bottom },
+            isDark && styles.adminFloatingPillDark,
+          ]}
+          activeOpacity={0.85}
+          accessibilityLabel="Return to Admin Dashboard"
+        >
+          <View style={styles.adminFloatingDot} />
+          <LayoutDashboard size={14} color="#FFFFFF" />
+          <Text style={styles.adminFloatingText}>
+            {t('common.adminDashboard') || 'Admin Dashboard'}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+export default function CustomerNavigator() {
+  const { isDark } = useTheme();
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        headerStyle: {
+          backgroundColor: isDark ? '#0f172a' : '#FFFFFF',
+        },
+        headerTintColor: isDark ? '#FFFFFF' : CustomerColors.black,
+        headerTitleStyle: {
+          fontWeight: '700',
+        },
+      }}
+    >
+      <Stack.Screen name="CustomerTabs" component={CustomerTabs} />
+      <Stack.Screen
+        name="ProductDetail"
+        component={ProductDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Cart"
+        component={CartScreen}
+        options={{ headerShown: true, title: 'Your Cart' }}
+      />
+      <Stack.Screen
+        name="Checkout"
+        component={CheckoutScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PhonePeWebView"
+        component={PhonePeWebViewScreen}
+        options={{ headerShown: true, title: 'PhonePe' }}
+      />
+      <Stack.Screen
+        name="RazorpayWebView"
+        component={RazorpayWebViewScreen}
+        options={{
+          headerShown: true,
+          title: 'Razorpay Checkout',
+          headerStyle: { backgroundColor: '#0a0a0a' },
+          headerTintColor: '#D4AF37',
+        }}
+      />
+      <Stack.Screen
+        name="PaymentStatus"
+        component={PaymentStatusScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ headerShown: true }}
+      />
+      <Stack.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ headerShown: true, title: 'Profile' }}
+      />
+      <Stack.Screen
+        name="About"
+        component={AboutScreen}
+        options={{ headerShown: true, title: 'About Us' }}
+      />
+      <Stack.Screen
+        name="Services"
+        component={ServicesScreen}
+        options={{ headerShown: true, title: 'Our Services' }}
+      />
+      <Stack.Screen
+        name="Testimonials"
+        component={TestimonialsScreen}
+        options={{ headerShown: true }}
+      />
+      <Stack.Screen
+        name="StoreRegister"
+        component={StoreRegisterScreen}
+        options={{ headerShown: true, title: 'Register Your Store' }}
+      />
+      <Stack.Screen
+        name="CompareStores"
+        component={CompareStoresScreen}
+        options={{
+          headerShown: false,
+          presentation: 'transparentModal',
+          animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen
+        name="BulkPurchase"
+        component={BulkPurchaseScreen}
+        options={{ headerShown: true, title: 'Bulk Purchase' }}
+      />
+      <Stack.Screen
+        name="Nearby"
+        component={NearbyOffersScreen}
+        options={{ headerShown: true, title: 'Nearby Offers' }}
+      />
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: true, title: 'Notifications' }}
+      />
+      <Stack.Screen
+        name="Suppliers"
+        component={SuppliersScreen}
+        options={{ headerShown: true, title: 'Suppliers' }}
+      />
+      <Stack.Screen
+        name="MyOffers"
+        component={MyOffersScreen}
+        options={{ headerShown: true, title: 'My Offers' }}
+      />
+      <Stack.Screen
+        name="HelpCenter"
+        component={HelpCenterScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PrivacyPolicy"
+        component={PrivacyPolicyScreen}
+        options={{ headerShown: true, title: 'Privacy Policy' }}
+      />
+      <Stack.Screen
+        name="TermsOfUse"
+        component={TermsOfServiceScreen}
+        options={{ headerShown: true, title: 'Terms of Use' }}
+      />
+      <Stack.Screen
+        name="TermsOfService"
+        component={TermsOfServiceScreen}
+        options={{ headerShown: true, title: 'Terms of Service' }}
+      />
+      <Stack.Screen
+        name="Sitemap"
+        component={SitemapScreen}
+        options={{ headerShown: true, title: 'Sitemap' }}
+      />
+      <Stack.Screen
+        name="Wishlist"
+        component={WishlistScreen}
+        options={{ headerShown: true, title: 'My Wishlist' }}
+      />
+      <Stack.Screen
+        name="Returns"
+        component={ReturnsRefundsScreen}
+        options={{ headerShown: true, title: 'Returns & Refunds' }}
+      />
+      <Stack.Screen
+        name="ReturnsRefunds"
+        component={ReturnsRefundsScreen}
+        options={{ headerShown: true, title: 'Returns & Refunds' }}
+      />
+      <Stack.Screen
+        name="Careers"
+        component={CareersScreen}
+        options={{ headerShown: true, title: 'Careers' }}
+      />
+      <Stack.Screen
+        name="Blog"
+        component={BlogScreen}
+        options={{ headerShown: true, title: 'Blogs & News' }}
+      />
+      <Stack.Screen
+        name="BlogNews"
+        component={BlogScreen}
+        options={{ headerShown: true, title: 'Blogs & News' }}
+      />
+      <Stack.Screen
+        name="Press"
+        component={PressScreen}
+        options={{ headerShown: true, title: 'Press' }}
+      />
+      <Stack.Screen
+        name="OrderTracking"
+        component={OrderTrackingScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="OrderDetail"
+        component={OrderDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="MyCredit"
+        component={MyCreditScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="DeliveryPartnerApplication"
+        component={DeliveryPartnerApplicationScreen}
+        options={{ headerShown: true, title: 'Become a Delivery Partner' }}
+      />
+      <Stack.Screen
+        name="DeliveryDashboard"
+        component={DeliveryPartnerDashboardScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="DeliveryPartnerDashboard"
+        component={DeliveryPartnerDashboardScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="LoginRegister"
+        component={LoginRegisterScreen}
+        options={{ headerShown: false }}
+      />
+    </Stack.Navigator>
+  );
+}
+
+const styles = StyleSheet.create({
+  adminFloatingPill: {
+    position: 'absolute',
+    right: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#0F172A',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 8,
+    zIndex: 999,
+  },
+  adminFloatingPillDark: {
+    backgroundColor: '#1E293B',
+    borderColor: '#EF4444',
+  },
+  adminFloatingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#EF4444',
+  },
+  adminFloatingText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+});

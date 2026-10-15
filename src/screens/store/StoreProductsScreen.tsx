@@ -1,0 +1,410 @@
+import React, { useState, useMemo } from 'react';
+import { View, Text, TextInput, Image, FlatList, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Modal } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import { Search, Plus, Edit2, Trash2, Package, ScanLine, ListChecks, Camera, Image as ImageIcon, X } from 'lucide-react-native';
+import { useStoreDashboard } from '../../context/StoreDashboardContext';
+import { useTheme } from '../../context/ThemeContext';
+import { storeProductApi } from '../../api/storeProductApi';
+import { scanProductImage, scanBulkProducts, buildGeneratedImageUrl, fetchProductPhotoUrl } from '../../api/geminiScanApi';
+import { emptyProductForm } from '../../utils/productForm';
+import { requestCameraPermission } from '../../utils/permissions';
+import { BulkProductRow } from './StoreBulkProductScanScreen';
+import { CustomerColors, Spacing, FontSizes, BorderRadius } from '../../styles/theme';
+import { groupProductsByType } from '../../utils/groupProducts';
+import { resolveImageUrl } from '../../utils/imageUrl';
+import BulkScanUploadModal from '../../components/common/BulkScanUploadModal';
+import { useTranslation, translateProductName, translateCategory, registerProducts } from '../../i18n';
+
+export default function StoreProductsScreen() {
+  const navigation = useNavigation<any>();
+  const { products, categories, loading, refresh } = useStoreDashboard();
+  const { isDark } = useTheme();
+  const { t, language } = useTranslation();
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+
+  React.useEffect(() => {
+    if (products && products.length) {
+      registerProducts(products);
+    }
+  }, [products]);
+
+  const [search, setSearch] = useState('');
+  const [catFilter, setCatFilter] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [bulkScanning, setBulkScanning] = useState(false);
+  const [scanModalType, setScanModalType] = useState<'single' | 'bulk' | null>(null);
+  const [showBulkScanModal, setShowBulkScanModal] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const filtered = products.filter(p => {
+    const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase()) || (p.brand || '').toLowerCase().includes(search.toLowerCase());
+    const matchCat = !catFilter || p.category === catFilter;
+    return matchSearch && matchCat;
+  });
+
+  const productTypes = groupProductsByType(filtered);
+
+  const handleDelete = (id: string) => {
+    Alert.alert('Delete this product?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(id);
+          try {
+            await storeProductApi.delete(id);
+            refresh();
+          } catch {
+            Alert.alert('Error', 'Failed to delete product.');
+          } finally {
+            setDeleting(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const runScan = async (base64: string, mimeType: string) => {
+    setScanning(true);
+    try {
+      const extracted = await scanProductImage(base64, mimeType);
+      const photoUrl = await fetchProductPhotoUrl(extracted.productName, extracted.category);
+      navigation.navigate('ProductForm', {
+        scanned: {
+          title: extracted.productName,
+          description: extracted.description,
+          price: String(extracted.price || ''),
+          discountedPrice: String(extracted.discountedPrice || ''),
+          category: extracted.category,
+          brand: extracted.brand,
+          imageUrl: photoUrl || buildGeneratedImageUrl(extracted.productName, extracted.category), 
+        },
+      });
+    } catch (err: any) {
+      Alert.alert('Scan failed', err?.message || 'Could not read product details from that photo. Try Add Product to enter them manually.');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const runBulkScan = async (base64: string, mimeType: string) => {
+    setBulkScanning(true);
+    try {
+      const extracted = await scanBulkProducts(base64, mimeType);
+      if (extracted.length === 0) {
+        Alert.alert('No products found', 'Could not read any product names from that image.');
+        return;
+      }
+      const scanned: BulkProductRow[] = await Promise.all(
+        extracted.map(async (p, i) => {
+          const photoUrl = await fetchProductPhotoUrl(p.productName, p.category);
+          return {
+            id: `${Date.now()}-${i}`,
+            ...emptyProductForm({
+              title: p.productName,
+              description: p.description,
+              price: p.price ? String(p.price) : '',
+              discountedPrice: p.discountedPrice ? String(p.discountedPrice) : '',
+              category: p.category,
+              brand: p.brand,
+            }),
+            imageUrl: photoUrl || buildGeneratedImageUrl(p.productName, p.category, i * 13 + 5),
+          };
+        })
+      );
+      navigation.navigate('BulkProductScan', { scanned });
+    } catch (err: any) {
+      Alert.alert('Scan failed', err?.message || 'Could not read products from that photo. Try Add Product to enter them manually.');
+    } finally {
+      setBulkScanning(false);
+    }
+  };
+
+  const handleCameraScan = async () => {
+    const isSingle = scanModalType === 'single';
+    setScanModalType(null);
+    if (!isSingle) {
+      setShowBulkScanModal(true);
+      return;
+    }
+    const granted = await requestCameraPermission();
+    if (!granted) return;
+    const res = await launchCamera({
+      mediaType: 'photo',
+      includeBase64: true,
+      quality: 0.8,
+      maxWidth: 1600,
+      maxHeight: 1600,
+      saveToPhotos: false,
+    });
+    const asset = res.assets?.[0];
+    if (asset?.base64) {
+      runScan(asset.base64, asset.type || 'image/jpeg');
+    } else if (res.errorMessage) {
+      Alert.alert('Camera unavailable', res.errorMessage);
+    }
+  };
+
+  const handleGalleryScan = async () => {
+    const isSingle = scanModalType === 'single';
+    setScanModalType(null);
+    if (!isSingle) {
+      setShowBulkScanModal(true);
+      return;
+    }
+    const res = await launchImageLibrary({
+      mediaType: 'photo',
+      includeBase64: true,
+      quality: 0.8,
+      maxWidth: 1600,
+      maxHeight: 1600,
+    });
+    const asset = res.assets?.[0];
+    if (asset?.base64) {
+      runScan(asset.base64, asset.type || 'image/jpeg');
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.toolbar}>
+        <View style={styles.searchBox}>
+          <Search size={14} color={isDark ? '#9CA3AF' : CustomerColors.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search products…"
+            placeholderTextColor={isDark ? '#94A3B8' : '#9CA3AF'}
+          />
+        </View>
+        <TouchableOpacity style={styles.scanBtn} onPress={() => setScanModalType('single')} disabled={scanning}>
+          {scanning ? <ActivityIndicator size="small" color="#fff" /> : <ScanLine size={16} color="#fff" />}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.scanBtn} onPress={() => setShowBulkScanModal(true)} disabled={bulkScanning}>
+          <ListChecks size={16} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.addBtn} onPress={() => navigation.navigate('ProductForm', {})}>
+          <Plus size={16} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        data={productTypes}
+        keyExtractor={pt => pt.typeKey}
+        numColumns={2}
+        columnWrapperStyle={{ gap: Spacing.sm }}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Package size={40} color={isDark ? '#374151' : '#E5E7EB'} />
+            <Text style={styles.emptyTitle}>{products.length === 0 ? 'No products found' : 'No results'}</Text>
+            <TouchableOpacity style={styles.emptyBtn} onPress={() => navigation.navigate('ProductForm', {})}>
+              <Text style={styles.emptyBtnText}>Add First Product</Text>
+            </TouchableOpacity>
+          </View>
+        }
+        renderItem={({ item: pt }) => {
+          const brandRows = pt.items
+            .map((p: any) => ({
+              brand: p.brand || 'Unbranded',
+              stock: p.totalStock || 0,
+              stockUnit: p.stockUnit || p.unit || pt.stockUnit || 'Count',
+            }))
+            .sort((a: any, b: any) => b.stock - a.stock);
+          const visibleBrands = brandRows.slice(0, 3);
+          const extraCount = brandRows.length - visibleBrands.length;
+
+          return (
+            <View style={styles.card}>
+              <View style={styles.imageWrap}>
+                {pt.image ? <Image source={{ uri: resolveImageUrl(pt.image) }} style={styles.image} /> : <Package size={28} color={isDark ? '#4B5563' : '#E5E7EB'} />}
+              </View>
+              <View style={styles.cardBody}>
+                <Text style={styles.category}>{pt.category ? translateCategory(pt.category, language) : '—'}</Text>
+                <Text style={styles.title} numberOfLines={1}>{translateProductName(pt.title, language, pt.items?.[0])}</Text>
+                <Text style={styles.brandCountText}>{pt.brandCount} {pt.brandCount !== 1 ? (t.store.availableBrandsLabel || 'Brands') : (t.store.brandLabel || 'Brand')}</Text>
+                <Text style={styles.stock}>{t.store.productStock || 'Total Stock'}: {pt.totalStock} {((pt.stockUnit === 'Count' || !pt.stockUnit) && language === 'ta') ? 'எண்ணிக்கை' : (pt.stockUnit || 'Count')}</Text>
+
+                <View style={styles.brandList}>
+                  {visibleBrands.map((b: any, i: number) => (
+                    <View key={i} style={styles.brandRow}>
+                      <Text style={styles.brandRowName} numberOfLines={1}>{b.brand}</Text>
+                      <Text style={[styles.brandRowStock, b.stock < 5 && styles.stockLow]}>
+                        {b.stock} {((b.stockUnit === 'Count' || !b.stockUnit) && language === 'ta') ? 'எண்ணிக்கை' : (b.stockUnit || 'Count')}
+                      </Text>
+                    </View>
+                  ))}
+                  {extraCount > 0 && <Text style={styles.moreText}>+{extraCount} more</Text>}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.manageBtn}
+                  onPress={() => navigation.navigate('ManageBrands', { typeKey: pt.typeKey, title: pt.title, category: pt.category, items: pt.items, brandCount: pt.brandCount, totalStock: pt.totalStock, stockUnit: pt.stockUnit })}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.manageBtnText} numberOfLines={1}>{t.store.manageBrands || 'Manage Brands'}</Text>
+                  <Text style={styles.manageBtnArrow}>→</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        }}
+      />
+
+      {/* Camera & Scan Modal */}
+      <Modal visible={Boolean(scanModalType)} transparent animationType="fade" onRequestClose={() => setScanModalType(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }}>
+                {scanModalType === 'bulk' ? (
+                  <ListChecks size={20} color={isDark ? '#2DD4BF' : CustomerColors.teal600} />
+                ) : (
+                  <ScanLine size={20} color={isDark ? '#2DD4BF' : CustomerColors.teal600} />
+                )}
+                <Text style={styles.modalTitle}>
+                  {scanModalType === 'bulk' ? 'Scan Product List' : 'Scan Paper Label'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setScanModalType(null)}>
+                <X size={20} color={isDark ? '#9CA3AF' : CustomerColors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSub}>
+              {scanModalType === 'bulk'
+                ? 'Take a photo of the grocery list, invoice, or handwritten list (up to 10 products), or choose from gallery.'
+                : 'Take a clear photo of the product label or choose from gallery.'}
+            </Text>
+
+            <TouchableOpacity style={styles.cameraActionBtn} onPress={handleCameraScan}>
+              <Camera size={18} color="#fff" />
+              <Text style={styles.cameraActionBtnText}>Take Photo with Camera</Text>
+            </TouchableOpacity>
+
+            <View style={styles.orDivider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.orText}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <TouchableOpacity style={styles.galleryActionBtn} onPress={handleGalleryScan}>
+              <ImageIcon size={18} color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+              <Text style={styles.galleryActionBtnText}>Choose from Gallery</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <BulkScanUploadModal
+        visible={showBulkScanModal}
+        onClose={() => setShowBulkScanModal(false)}
+        onRefresh={refresh}
+      />
+    </View>
+  );
+}
+
+const getStyles = (isDark: boolean) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: isDark ? '#0a0f1d' : CustomerColors.bg },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0a0f1d' : CustomerColors.bg },
+    toolbar: { flexDirection: 'row', gap: Spacing.sm, padding: Spacing.md },
+    searchBox: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+      backgroundColor: isDark ? '#111827' : CustomerColors.white,
+      borderWidth: 1,
+      borderColor: isDark ? '#1F2937' : CustomerColors.steelBorder,
+      borderRadius: BorderRadius.md,
+      paddingHorizontal: Spacing.md,
+    },
+    searchInput: { flex: 1, paddingVertical: Spacing.sm, fontSize: FontSizes.sm, color: isDark ? '#FFFFFF' : CustomerColors.black },
+    scanBtn: { width: 40, height: 40, borderRadius: BorderRadius.md, backgroundColor: CustomerColors.teal600, alignItems: 'center', justifyContent: 'center' },
+    addBtn: { width: 40, height: 40, borderRadius: BorderRadius.md, backgroundColor: CustomerColors.primary, alignItems: 'center', justifyContent: 'center' },
+    list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl },
+    empty: { flex: 1, alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.sm },
+    emptyTitle: { fontSize: FontSizes.base, fontWeight: '700', color: isDark ? '#9CA3AF' : '#374151' },
+    emptyBtn: { backgroundColor: CustomerColors.primary, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md, marginTop: Spacing.sm },
+    emptyBtnText: { color: '#fff', fontWeight: '700', fontSize: FontSizes.xs },
+    card: {
+      width: '48%',
+      backgroundColor: isDark ? '#111827' : CustomerColors.white,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
+      borderColor: isDark ? '#1F2937' : CustomerColors.steelBorder,
+      overflow: 'hidden',
+      marginBottom: Spacing.sm,
+    },
+    imageWrap: { aspectRatio: 1, backgroundColor: isDark ? '#1F2937' : '#F5F5F5', padding: Spacing.sm, alignItems: 'center', justifyContent: 'center' },
+    image: { width: '100%', height: '100%' },
+    discountBadge: { position: 'absolute', top: 6, left: 6, backgroundColor: CustomerColors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+    discountBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+    cardBody: { padding: Spacing.sm },
+    category: { fontSize: 10, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary },
+    title: { fontSize: FontSizes.sm, fontWeight: '700', color: isDark ? '#F9FAFB' : CustomerColors.black, marginTop: 2 },
+    priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 4 },
+    price: { fontSize: FontSizes.base, fontWeight: '800', color: isDark ? '#2DD4BF' : CustomerColors.teal700 },
+    originalPrice: { fontSize: FontSizes.xs, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary, textDecorationLine: 'line-through' },
+    metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
+    availability: { fontSize: 9, fontWeight: '700', color: CustomerColors.success },
+    stock: { fontSize: 9, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary },
+    stockLow: { color: isDark ? '#FBBF24' : '#D97706', fontWeight: '700' },
+    actionsRow: { flexDirection: 'row', gap: Spacing.xs, marginTop: Spacing.sm, borderTopWidth: 1, borderTopColor: isDark ? '#1F2937' : '#F5F5F5', paddingTop: Spacing.sm },
+    actionBtn: { flex: 1, alignItems: 'center', paddingVertical: 6, backgroundColor: isDark ? '#1F2937' : CustomerColors.bg, borderRadius: BorderRadius.sm },
+    brandCountText: { fontSize: FontSizes.xs, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary, marginTop: 4 },
+    brandList: { marginTop: Spacing.sm, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: isDark ? '#1F2937' : '#F5F5F5', gap: 2 },
+    brandRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    brandRowName: { fontSize: 11, color: isDark ? '#D1D5DB' : '#4B5563', flex: 1, paddingRight: 6 },
+    brandRowStock: { fontSize: 11, fontWeight: '700', color: isDark ? '#E5E7EB' : '#374151' },
+    moreText: { fontSize: 11, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary },
+    manageBtn: {
+      marginTop: Spacing.sm,
+      backgroundColor: CustomerColors.teal600,
+      paddingVertical: 8,
+      paddingHorizontal: Spacing.xs,
+      borderRadius: BorderRadius.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+    },
+    manageBtnText: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: FontSizes.xs,
+      textAlign: 'center',
+      flexShrink: 1,
+    },
+    manageBtnArrow: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: FontSizes.xs,
+      flexShrink: 0,
+    },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: Spacing.lg },
+    modalCard: { width: '100%', maxWidth: 360, backgroundColor: isDark ? '#111827' : '#fff', borderRadius: BorderRadius.lg, padding: Spacing.lg, gap: Spacing.md, borderWidth: isDark ? 1 : 0, borderColor: isDark ? '#1F2937' : 'transparent' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    modalTitle: { fontSize: FontSizes.base, fontWeight: '800', color: isDark ? '#F9FAFB' : CustomerColors.black },
+    modalSub: { fontSize: FontSizes.xs, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary },
+    cameraActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: CustomerColors.teal600, paddingVertical: Spacing.md, borderRadius: BorderRadius.md },
+    cameraActionBtnText: { color: '#fff', fontSize: FontSizes.sm, fontWeight: '700' },
+    orDivider: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+    dividerLine: { flex: 1, height: 1, backgroundColor: isDark ? '#1F2937' : CustomerColors.steelBorder },
+    orText: { fontSize: 11, color: isDark ? '#9CA3AF' : CustomerColors.textSecondary, fontWeight: '600' },
+    galleryActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: isDark ? '#1F2937' : CustomerColors.mint, borderWidth: 1, borderColor: isDark ? '#374151' : CustomerColors.steelBorder, paddingVertical: Spacing.md, borderRadius: BorderRadius.md },
+    galleryActionBtnText: { color: isDark ? '#2DD4BF' : CustomerColors.teal700, fontSize: FontSizes.sm, fontWeight: '700' },
+  });

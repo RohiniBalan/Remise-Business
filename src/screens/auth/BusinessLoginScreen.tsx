@@ -1,0 +1,423 @@
+import React, { useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Modal,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Eye, EyeOff, Briefcase, CheckCircle2 } from 'lucide-react-native';
+import { authApi } from '../../api/authApi';
+import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
+import { CustomerColors, Spacing, FontSizes, BorderRadius } from '../../styles/theme';
+import { normalizeAuthErrorMessage, validateLoginForm } from '../../utils/authValidation';
+
+export default function BusinessLoginScreen() {
+  const navigation = useNavigation<any>();
+  const { login } = useAuth();
+  const { isDark } = useTheme();
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const validate = (): boolean => {
+    const errors = validateLoginForm({ email, password });
+    setFieldErrors(errors);
+    setError('');
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleLogin = async () => {
+    if (!validate()) return;
+
+    setError('');
+    setSubmitting(true);
+    try {
+      const res = await authApi.login(email.trim(), password);
+      const userData = res.data.data;
+
+      const userRole = (userData?.role ? String(userData.role) : 'user').toLowerCase().trim();
+      const isBusinessRole = ['store_owner', 'whole_saler', 'wholesaler', 'home_business'].includes(userRole);
+
+      if (!isBusinessRole) {
+        if (['admin', 'superadmin', 'super_admin'].includes(userRole)) {
+          setError('Administrator accounts must use the Remise Web Portal (https://remise.digital). Mobile access is not supported.');
+        } else {
+          setError('This account is a Remise Customer or Delivery Partner account. Please sign in using the Remise Customer app.');
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      await login(userData, userData.token);
+      setSuccessMessage('Logged in successfully! Opening merchant portal...');
+      setShowSuccess(true);
+      setTimeout(() => {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'RoleGate' }],
+        });
+      }, 1200);
+    } catch (err: any) {
+      setError(
+        normalizeAuthErrorMessage(err.response?.data?.message || err.message) ||
+        'Authentication failed. Please check your credentials.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      {/* Success Modal */}
+      <Modal visible={showSuccess} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIconWrap}>
+              <CheckCircle2 size={40} color={CustomerColors.primary} />
+            </View>
+            <Text style={styles.modalTitle}>Success!</Text>
+            <Text style={styles.modalSubtitle}>{successMessage}</Text>
+          </View>
+        </View>
+      </Modal>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        {/* Top Header Badge */}
+        <View style={styles.badgeContainer}>
+          <View style={styles.badge}>
+            <Briefcase size={16} color="#FF0000" />
+            <Text style={styles.badgeText}>BUSINESS PORTAL</Text>
+          </View>
+        </View>
+
+        <Text style={styles.heading}>Sign in to your business</Text>
+        <Text style={styles.subheading}>
+          Manage your store, wholesale stock, and catalog orders
+        </Text>
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        <View style={styles.form}>
+          {/* Email */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Business Email</Text>
+            <TextInput
+              style={[styles.input, !!fieldErrors.email && styles.inputError]}
+              placeholder="e.g. store@company.com"
+              placeholderTextColor={CustomerColors.textSecondary}
+              value={email}
+              onChangeText={text => {
+                setEmail(text);
+                if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: '' }));
+              }}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            {fieldErrors.email ? (
+              <Text style={styles.fieldErrorText}>{fieldErrors.email}</Text>
+            ) : null}
+          </View>
+
+          {/* Password */}
+          <View style={styles.fieldGroup}>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Password</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.passwordInput,
+                  !!fieldErrors.password && styles.inputError,
+                ]}
+                placeholder="Enter your password"
+                placeholderTextColor={CustomerColors.textSecondary}
+                value={password}
+                onChangeText={text => {
+                  setPassword(text);
+                  if (fieldErrors.password) setFieldErrors(prev => ({ ...prev, password: '' }));
+                }}
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity
+                style={styles.eyeBtn}
+                onPress={() => setShowPassword(prev => !prev)}
+              >
+                {showPassword ? (
+                  <EyeOff size={18} color={CustomerColors.textSecondary} />
+                ) : (
+                  <Eye size={18} color={CustomerColors.textSecondary} />
+                )}
+              </TouchableOpacity>
+            </View>
+            {fieldErrors.password ? (
+              <Text style={styles.fieldErrorText}>{fieldErrors.password}</Text>
+            ) : null}
+          </View>
+
+          {/* Submit Button */}
+          <TouchableOpacity
+            style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+            onPress={handleLogin}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.submitBtnText}>Sign In to Business</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Google Sign In Button */}
+          <TouchableOpacity
+            style={styles.googleBtn}
+            onPress={() => navigation.navigate('GoogleAuthWebView', { role: 'user' })}
+          >
+            <Text style={styles.googleBtnText}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          {/* Register Business Link */}
+          <View style={styles.registerRow}>
+            <Text style={styles.registerPrompt}>New to Remise Business?</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('BusinessSignup')}>
+              <Text style={styles.registerLink}> Register Business</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function getStyles(isDark: boolean) {
+  return StyleSheet.create({
+    flex: {
+      flex: 1,
+      backgroundColor: isDark ? '#0a0f1d' : CustomerColors.bg,
+    },
+    container: {
+      paddingHorizontal: Spacing.xl,
+      paddingVertical: Spacing.xxl + 8,
+      flexGrow: 1,
+      justifyContent: 'center',
+    },
+    badgeContainer: {
+      alignItems: 'center',
+      marginBottom: Spacing.sm,
+    },
+    badge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.xs + 2,
+      backgroundColor: 'rgba(255, 0, 0, 0.08)',
+      borderRadius: BorderRadius.pill,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 0, 0, 0.2)',
+    },
+    badgeText: {
+      fontSize: FontSizes.xs,
+      fontWeight: '800',
+      letterSpacing: 1.2,
+      color: CustomerColors.primary,
+    },
+    heading: {
+      fontSize: FontSizes.xxl,
+      fontWeight: '800',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+      textAlign: 'center',
+      marginTop: Spacing.xs,
+    },
+    subheading: {
+      fontSize: FontSizes.sm,
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      textAlign: 'center',
+      marginTop: 4,
+      marginBottom: Spacing.xl,
+    },
+    errorText: {
+      color: CustomerColors.danger,
+      backgroundColor: isDark ? '#450a0a' : CustomerColors.dangerBg,
+      padding: Spacing.md,
+      borderRadius: BorderRadius.md,
+      marginBottom: Spacing.md,
+      textAlign: 'center',
+      fontSize: FontSizes.sm,
+      borderWidth: 1,
+      borderColor: isDark ? '#7f1d1d' : 'rgba(239, 68, 68, 0.25)',
+    },
+    form: {
+      gap: Spacing.md,
+    },
+    fieldGroup: {
+      marginBottom: 4,
+    },
+    labelRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.xs,
+    },
+    label: {
+      fontSize: FontSizes.xs,
+      fontWeight: '700',
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: Spacing.xs,
+    },
+    forgotText: {
+      fontSize: FontSizes.xs,
+      color: CustomerColors.primary,
+      fontWeight: '600',
+    },
+    input: {
+      backgroundColor: isDark ? '#111827' : CustomerColors.white,
+      borderWidth: 1,
+      borderColor: isDark ? '#374151' : CustomerColors.steelBorder,
+      borderRadius: BorderRadius.lg,
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+      fontSize: FontSizes.base,
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+    },
+    inputError: {
+      borderColor: CustomerColors.danger,
+    },
+    fieldErrorText: {
+      fontSize: FontSizes.xs,
+      color: CustomerColors.danger,
+      marginTop: 4,
+      marginLeft: 4,
+    },
+    passwordContainer: {
+      position: 'relative',
+      justifyContent: 'center',
+    },
+    passwordInput: {
+      paddingRight: 48,
+    },
+    eyeBtn: {
+      position: 'absolute',
+      right: 14,
+      padding: 6,
+    },
+    submitBtn: {
+      backgroundColor: '#FF0000',
+      borderRadius: BorderRadius.lg,
+      paddingVertical: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: Spacing.sm,
+      shadowColor: '#FF0000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    submitBtnDisabled: {
+      opacity: 0.7,
+    },
+    submitBtnText: {
+      color: '#FFFFFF',
+      fontSize: FontSizes.base,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    googleBtn: {
+      backgroundColor: isDark ? '#111827' : CustomerColors.white,
+      borderWidth: 1,
+      borderColor: isDark ? '#374151' : CustomerColors.steelBorder,
+      borderRadius: BorderRadius.lg,
+      paddingVertical: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: Spacing.sm,
+    },
+    googleBtnText: {
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+      fontSize: FontSizes.base,
+      fontWeight: '600',
+    },
+    registerRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: Spacing.md,
+    },
+    registerPrompt: {
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      fontSize: FontSizes.sm,
+    },
+    registerLink: {
+      color: CustomerColors.primary,
+      fontSize: FontSizes.sm,
+      fontWeight: '700',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.75)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: Spacing.xl,
+    },
+    modalCard: {
+      backgroundColor: isDark ? '#18181B' : '#FFFFFF',
+      borderRadius: 24,
+      padding: 28,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: isDark ? '#27272A' : '#E5E7EB',
+      width: '100%',
+      maxWidth: 320,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.5,
+      shadowRadius: 20,
+      elevation: 10,
+    },
+    modalIconWrap: {
+      width: 68,
+      height: 68,
+      borderRadius: 34,
+      backgroundColor: 'rgba(255, 0, 0, 0.15)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    modalTitle: {
+      color: isDark ? '#FFFFFF' : '#111827',
+      fontSize: 22,
+      fontWeight: '800',
+      marginBottom: 8,
+    },
+    modalSubtitle: {
+      color: isDark ? '#9CA3AF' : '#6B7280',
+      fontSize: 14,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+  });
+}

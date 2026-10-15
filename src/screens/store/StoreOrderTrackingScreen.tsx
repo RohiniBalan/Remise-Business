@@ -1,0 +1,1050 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
+  Linking,
+  Share,
+  Alert,
+  Modal,
+  TextInput,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import {
+  ArrowLeft,
+  Truck,
+  MapPin,
+  Phone,
+  CheckCircle2,
+  Clock,
+  Package,
+  Navigation,
+  Store,
+  User,
+  AlertCircle,
+  Share2,
+  Copy,
+  ExternalLink,
+  RefreshCw,
+} from 'lucide-react-native';
+import { smartOrderApi } from '../../api/smartOrderApi';
+import { useTheme } from '../../context/ThemeContext';
+import { CustomerColors, Spacing, FontSizes, BorderRadius, Shadows } from '../../styles/theme';
+import { GATEWAY_URL } from '../../api/endpoints';
+import LiveDeliveryTrackingMap from '../../components/common/LiveDeliveryTrackingMap';
+import { useTranslation, translateProductName, useDeliveryTranslations } from '../../i18n';
+
+export default function StoreOrderTrackingScreen() {
+  const insets = useSafeAreaInsets();
+  const route = useRoute<any>();
+  const navigation = useNavigation<any>();
+  const { language } = useTranslation();
+  const tDeliv = useDeliveryTranslations();
+  const { isDark } = useTheme();
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+
+  const orderId = route.params?.orderId;
+
+  const [order, setOrder] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState('');
+
+  const [otpModalVisible, setOtpModalVisible] = useState(false);
+  const [deliveryOtp, setDeliveryOtp] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+
+  const translateMilestone = (status: string) => {
+    if (!status) return '';
+    const norm = status.toLowerCase().replace(/[\s_-]+/g, '');
+    switch (norm) {
+      case 'pending':
+        return tDeliv.statusPending;
+      case 'searching':
+        return tDeliv.statusSearching;
+      case 'assigned':
+        return tDeliv.statusAssigned;
+      case 'accepted':
+        return tDeliv.statusAccepted;
+      case 'goingtostore':
+      case 'headingtostore':
+        return tDeliv.statusGoingToStore;
+      case 'arrivedatstore':
+        return tDeliv.statusArrivedAtStore;
+      case 'ready':
+        return tDeliv.statusReady;
+      case 'pickedup':
+        return tDeliv.statusPickedUp;
+      case 'outfordelivery':
+        return tDeliv.statusOutForDelivery;
+      case 'delivered':
+        return tDeliv.statusDelivered;
+      case 'cancelled':
+      case 'canceled':
+        return tDeliv.statusCancelled;
+      case 'unavailable':
+        return tDeliv.statusUnavailable;
+      case 'rejected':
+        return tDeliv.statusRejected;
+      default:
+        return status;
+    }
+  };
+
+  const fetchTracking = useCallback(
+    async (isBackground = false) => {
+      if (!orderId) return;
+      try {
+        if (!isBackground) setLoading(true);
+        else setRefreshing(true);
+        setError('');
+
+        const res = await smartOrderApi.getOrderTracking(orderId);
+        if (res.data?.success) {
+          setOrder(res.data.data);
+        } else {
+          setError(res.data?.message || 'Failed to load tracking data');
+        }
+      } catch (err: any) {
+        setError(
+          err?.response?.data?.message ||
+            err?.message ||
+            'Order not found or tracking unavailable'
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [orderId]
+  );
+
+  useEffect(() => {
+    fetchTracking(false);
+  }, [fetchTracking]);
+
+  // Live auto-polling every 6 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTracking(true);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [fetchTracking]);
+
+  const currentStatus = order?.deliveryStatus || 'Pending';
+  const driver = order?.deliveryPerson || {};
+  const webBase = GATEWAY_URL.replace(/:\d+$/, ':4000').replace(/\/api\/?$/, '');
+  const deliveryUrl = order?.deliveryToken ? `${webBase}/delivery/${order.deliveryToken}` : '';
+
+  const handleShare = async () => {
+    if (!deliveryUrl) return;
+    try {
+      await Share.share({
+        title: `Delivery for Order #${order?.orderId}`,
+        message: `Delivery Portal Link for Order #${order?.orderId}:\n${deliveryUrl}`,
+      });
+    } catch (e) {
+      console.error('Share error:', e);
+    }
+  };
+
+  const handleCall = (phone: string) => {
+    if (!phone) return;
+    Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleOpenMap = (address: string) => {
+    if (!address) return;
+    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`);
+  };
+
+  const handleDirectStatusUpdate = async (status: string) => {
+    if (status === 'Delivered') {
+      setDeliveryOtp('');
+      setOtpError('');
+      setOtpModalVisible(true);
+      return;
+    }
+    try {
+      setUpdating(true);
+      await smartOrderApi.updateDeliveryStatusDirect(orderId, { status });
+      await fetchTracking(true);
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to update milestone');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleVerifyDeliveryOtp = async () => {
+    if (!deliveryOtp || deliveryOtp.trim().length !== 6) {
+      setOtpError(tDeliv.enterValid6DigitOtp);
+      return;
+    }
+    try {
+      setVerifyingOtp(true);
+      setOtpError('');
+      const res = await smartOrderApi.verifyOrderOtp(orderId, deliveryOtp.trim());
+      if (res.data?.success) {
+        setOtpModalVisible(false);
+        setDeliveryOtp('');
+        await fetchTracking(true);
+        Alert.alert('Success', tDeliv.otpVerifiedSuccess);
+      } else {
+        setOtpError(res.data?.message || 'Verification failed');
+      }
+    } catch (err: any) {
+      setOtpError(err?.response?.data?.message || err?.message || 'Failed to verify OTP');
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <ArrowLeft size={20} color={isDark ? '#F9FAFB' : CustomerColors.black} />
+        </TouchableOpacity>
+
+        <View style={{ flex: 1, marginLeft: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.headerTitle}>{tDeliv.liveTrackingTitle}</Text>
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveBadgeText}>{tDeliv.liveBadge}</Text>
+            </View>
+          </View>
+          <Text style={styles.headerSub}>{tDeliv.orderPrefix}{orderId}</Text>
+        </View>
+
+        <TouchableOpacity style={styles.refreshBtn} onPress={() => fetchTracking(true)}>
+          <RefreshCw size={16} color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+          <Text style={styles.loadingText}>{tDeliv.loadingTracking}</Text>
+        </View>
+      ) : error || !order ? (
+        <View style={styles.center}>
+          <AlertCircle size={36} color="#DC2626" />
+          <Text style={styles.errorTitle}>{tDeliv.trackingUnavailable}</Text>
+          <Text style={styles.errorSub}>{error || tDeliv.couldNotLocateOrder}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => fetchTracking(false)}>
+            <Text style={styles.retryBtnText}>{tDeliv.retry}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 30 }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchTracking(true)}
+              colors={[CustomerColors.teal600]}
+              tintColor={CustomerColors.teal600}
+            />
+          }
+        >
+          {/* Main Status Header Card */}
+          <View style={styles.statusCard}>
+            <View style={styles.statusRow}>
+              <View style={styles.statusIconWrap}>
+                <Truck size={24} color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.statusMode}>
+                  {tDeliv.modePrefix} {order.deliveryMode === 'portal_delivery' ? tDeliv.remiseNetworkMode : tDeliv.storeDeliveryMode}
+                </Text>
+                <Text style={styles.statusText}>{translateMilestone(currentStatus)}</Text>
+              </View>
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusBadgeText}>{translateMilestone(currentStatus)}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Real-time Live GPS Delivery Partner Tracking Map (Store View) */}
+          <LiveDeliveryTrackingMap
+            orderId={orderId}
+            deliveryStatus={currentStatus}
+            driver={driver}
+            storeName={order?.store?.name || order?.storeName}
+            storeAddress={order?.store?.address || 'Store Location'}
+            customerName={order?.customerName}
+            customerAddress={order?.deliveryAddress?.fullAddress || 'Customer Address'}
+            isStoreOwner={true}
+            isDark={isDark}
+          />
+
+          {/* Assigned Driver Card */}
+          {driver?.name ? (
+            <View style={styles.driverCard}>
+              <View style={styles.driverRow}>
+                <View style={styles.driverAvatar}>
+                  <Text style={styles.driverAvatarText}>
+                    {driver.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.driverName}>{driver.name}</Text>
+                    <View style={styles.ratingBadge}>
+                      <Text style={styles.ratingText}>★ {driver.rating || '4.8'}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.driverVehicle}>
+                    {driver.vehicleType || 'Bike'} {driver.vehicleNumber ? `• ${driver.vehicleNumber}` : ''}
+                  </Text>
+                </View>
+
+                {driver.phone ? (
+                  <TouchableOpacity
+                    style={styles.callBtn}
+                    onPress={() => handleCall(driver.phone)}
+                  >
+                    <Phone size={13} color="#FFFFFF" />
+                    <Text style={styles.callBtnText}>{tDeliv.call}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <View style={styles.driverFooter}>
+                <Text style={styles.driverEtaText}>{tDeliv.eta}: {driver.eta || '10-15 mins'}</Text>
+                {deliveryUrl ? (
+                  <TouchableOpacity style={styles.shareDriverLinkBtn} onPress={handleShare}>
+                    <Share2 size={12} color="#FFFFFF" />
+                    <Text style={styles.shareDriverLinkBtnText}>{tDeliv.shareLink}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{tDeliv.partnerStatusTitle}</Text>
+              <View style={styles.unassignedRow}>
+                <Text style={styles.unassignedText}>{tDeliv.noDriverAssigned}</Text>
+                <Text style={styles.unassignedSub}>
+                  {order.deliveryStatus === 'Searching' ? tDeliv.broadcastingToDrivers : tDeliv.pendingAction}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Customer Drop-off Card */}
+          <View style={styles.card}>
+            <View style={styles.addressHeader}>
+              <User size={16} color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+              <Text style={styles.cardTitle}>{tDeliv.customerDropoffLocation}</Text>
+            </View>
+
+            <Text style={styles.customerName}>{order.customerName}</Text>
+            <Text style={styles.addressText}>
+              {order.deliveryAddress?.fullAddress || tDeliv.noAddressSpecified}
+            </Text>
+
+            <View style={styles.customerActionsRow}>
+              {order.customerPhone ? (
+                <TouchableOpacity
+                  style={styles.customerCallBtn}
+                  onPress={() => handleCall(order.customerPhone)}
+                >
+                  <Phone size={12} color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+                  <Text style={styles.customerCallBtnText}>{tDeliv.callCustomer} {order.customerPhone}</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {order.deliveryAddress?.fullAddress ? (
+                <TouchableOpacity
+                  style={styles.customerMapBtn}
+                  onPress={() => handleOpenMap(order.deliveryAddress.fullAddress)}
+                >
+                  <Navigation size={12} color="#2563EB" />
+                  <Text style={styles.customerMapBtnText}>{tDeliv.directions}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Quick Milestone Override Buttons */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{tDeliv.quickMilestoneOverride}</Text>
+            <View style={styles.milestoneButtonsRow}>
+              {[
+                { key: 'Ready', label: tDeliv.statusReady },
+                { key: 'Out for Delivery', label: tDeliv.statusOutForDelivery },
+                { key: 'Delivered', label: tDeliv.statusDelivered },
+              ].map(item => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.milestoneBtn,
+                    currentStatus === item.key && styles.milestoneBtnActive,
+                  ]}
+                  onPress={() => handleDirectStatusUpdate(item.key)}
+                  disabled={updating}
+                >
+                  <Text
+                    style={[
+                      styles.milestoneBtnText,
+                      currentStatus === item.key && styles.milestoneBtnTextActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Milestone Timeline History */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{tDeliv.milestoneTimelineTitle}</Text>
+            <View style={styles.timelineList}>
+              {(order.deliveryTimeline || []).length === 0 ? (
+                <Text style={styles.emptyTimelineText}>{tDeliv.noMilestonesYet}</Text>
+              ) : (
+                (order.deliveryTimeline || []).map((ev: any, idx: number) => (
+                  <View key={idx} style={styles.timelineItem}>
+                    <View style={styles.timelineIndexWrap}>
+                      <Text style={styles.timelineIndexText}>{idx + 1}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={styles.timelineStatus}>{translateMilestone(ev.status)}</Text>
+                        <Text style={styles.timelineTime}>
+                          {new Date(ev.timestamp).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </Text>
+                      </View>
+                      <Text style={styles.timelineNote}>
+                        {ev.note || `${tDeliv.statusUpdatedBy} ${ev.updatedBy || 'System'}`}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+
+          {/* Order Items Checklist */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{tDeliv.orderItemsTitle} ({order.items?.length || 0})</Text>
+            <View style={styles.itemsList}>
+              {(order.items || []).map((item: any, idx: number) => (
+                <View key={idx} style={styles.itemRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.itemTitle}>{translateProductName(item.title, language)}</Text>
+                    {item.brand ? <Text style={styles.itemBrand}>{item.brand}</Text> : null}
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.itemQty}>x{item.quantity}</Text>
+                    <Text style={styles.itemPrice}>₹{item.price * item.quantity}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>{tDeliv.totalRevenue}</Text>
+              <Text style={styles.totalValue}>₹{order.totalAmount}</Text>
+            </View>
+          </View>
+        </ScrollView>
+      )}
+
+      {/* Verify Delivery OTP Modal */}
+      {otpModalVisible && (
+        <Modal
+          visible={otpModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => !verifyingOtp && setOtpModalVisible(false)}
+        >
+          <View style={styles.otpModalBackdrop}>
+            <View style={styles.otpModalCard}>
+              <View style={styles.otpModalIconWrap}>
+                <CheckCircle2 size={28} color="#16A34A" />
+              </View>
+              <Text style={styles.otpModalTitle}>{tDeliv.confirmDeliveryModalTitle}</Text>
+              <Text style={styles.otpModalSubtitle}>
+                {tDeliv.confirmDeliveryModalSub}
+              </Text>
+              <TextInput
+                style={styles.otpInput}
+                value={deliveryOtp}
+                onChangeText={(text) => {
+                  setDeliveryOtp(text.replace(/[^0-9]/g, ''));
+                  setOtpError('');
+                }}
+                keyboardType="number-pad"
+                maxLength={6}
+                placeholder="• • • • • •"
+                placeholderTextColor={isDark ? '#4B5563' : '#9CA3AF'}
+                autoFocus
+              />
+              {otpError ? (
+                <Text style={styles.otpErrorText}>{otpError}</Text>
+              ) : null}
+              <View style={styles.otpModalBtnRow}>
+                <TouchableOpacity
+                  style={styles.otpModalCancelBtn}
+                  disabled={verifyingOtp}
+                  onPress={() => setOtpModalVisible(false)}
+                >
+                  <Text style={styles.otpModalCancelText}>{tDeliv.cancel}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.otpModalSubmitBtn, (verifyingOtp || deliveryOtp.length !== 6) && { opacity: 0.6 }]}
+                  disabled={verifyingOtp || deliveryOtp.length !== 6}
+                  onPress={handleVerifyDeliveryOtp}
+                >
+                  {verifyingOtp ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.otpModalSubmitText}>{tDeliv.verifyCompleteBtn}</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+    </View>
+  );
+}
+
+const getStyles = (isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: isDark ? '#0B0F17' : '#F4F7F9',
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      backgroundColor: isDark ? '#111827' : '#FFFFFF',
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? '#1F2937' : CustomerColors.steelBorder,
+    },
+    backBtn: {
+      padding: 6,
+      borderRadius: BorderRadius.md,
+    },
+    headerTitle: {
+      fontSize: FontSizes.base,
+      fontWeight: '800',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+    },
+    headerSub: {
+      fontSize: 11,
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      fontFamily: 'monospace',
+    },
+    liveBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(22, 163, 74, 0.15)',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: BorderRadius.pill,
+      borderWidth: 1,
+      borderColor: 'rgba(22, 163, 74, 0.3)',
+    },
+    liveDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 2.5,
+      backgroundColor: '#16A34A',
+    },
+    liveBadgeText: {
+      fontSize: 9,
+      fontWeight: '800',
+      color: '#16A34A',
+    },
+    refreshBtn: {
+      padding: 8,
+      borderRadius: BorderRadius.md,
+      backgroundColor: isDark ? '#1F2937' : '#F0FDFA',
+    },
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: Spacing.xl,
+      gap: 8,
+    },
+    loadingText: {
+      fontSize: FontSizes.xs,
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      fontWeight: '600',
+    },
+    errorTitle: {
+      fontSize: FontSizes.base,
+      fontWeight: '800',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+    },
+    errorSub: {
+      fontSize: FontSizes.xs,
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      textAlign: 'center',
+    },
+    retryBtn: {
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.sm,
+      backgroundColor: CustomerColors.teal600,
+      borderRadius: BorderRadius.md,
+      marginTop: 8,
+    },
+    retryBtnText: {
+      color: '#FFFFFF',
+      fontSize: FontSizes.xs,
+      fontWeight: '700',
+    },
+    content: {
+      padding: Spacing.md,
+      gap: Spacing.md,
+    },
+    statusCard: {
+      backgroundColor: isDark ? '#111827' : '#FFFFFF',
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      borderWidth: 1,
+      borderColor: isDark ? '#1F2937' : CustomerColors.steelBorder,
+      ...Shadows.card,
+    },
+    statusRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    statusIconWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: isDark ? '#134e4a' : '#F0FDFA',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    statusMode: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: isDark ? '#9CA3AF' : '#6B7280',
+      textTransform: 'uppercase',
+    },
+    statusText: {
+      fontSize: FontSizes.lg,
+      fontWeight: '900',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+      marginTop: 2,
+    },
+    statusBadge: {
+      backgroundColor: isDark ? '#134e4a' : '#F0FDFA',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: BorderRadius.pill,
+      borderWidth: 1,
+      borderColor: CustomerColors.teal600,
+    },
+    statusBadgeText: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: isDark ? '#2DD4BF' : CustomerColors.teal700,
+    },
+    card: {
+      backgroundColor: isDark ? '#111827' : '#FFFFFF',
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      borderWidth: 1,
+      borderColor: isDark ? '#1F2937' : CustomerColors.steelBorder,
+      ...Shadows.card,
+      gap: Spacing.sm,
+    },
+    cardTitle: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: isDark ? '#9CA3AF' : '#6B7280',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    driverCard: {
+      backgroundColor: isDark ? '#134e4a' : '#F0FDFA',
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.md,
+      borderWidth: 1,
+      borderColor: isDark ? '#0f766e' : '#CCFBF1',
+      gap: 10,
+    },
+    driverRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    driverAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: CustomerColors.teal600,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    driverAvatarText: {
+      color: '#FFFFFF',
+      fontWeight: '900',
+      fontSize: 16,
+    },
+    driverName: {
+      fontSize: FontSizes.sm,
+      fontWeight: '800',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+    },
+    ratingBadge: {
+      backgroundColor: isDark ? '#0f766e' : '#CCFBF1',
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    ratingText: {
+      fontSize: 9,
+      fontWeight: '800',
+      color: isDark ? '#F9FAFB' : CustomerColors.teal700,
+    },
+    driverVehicle: {
+      fontSize: 11,
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      marginTop: 2,
+    },
+    callBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: CustomerColors.teal600,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: BorderRadius.pill,
+    },
+    callBtnText: {
+      color: '#FFFFFF',
+      fontSize: 11,
+      fontWeight: '800',
+    },
+    driverFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: isDark ? '#0f766e' : '#CCFBF1',
+    },
+    driverEtaText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: isDark ? '#2DD4BF' : CustomerColors.teal700,
+    },
+    shareDriverLinkBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: '#16A34A',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: BorderRadius.pill,
+    },
+    shareDriverLinkBtnText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '700',
+    },
+    unassignedRow: {
+      paddingVertical: 6,
+    },
+    unassignedText: {
+      fontSize: FontSizes.xs,
+      fontWeight: '700',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+    },
+    unassignedSub: {
+      fontSize: 11,
+      color: '#D97706',
+      marginTop: 2,
+    },
+    addressHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    customerName: {
+      fontSize: FontSizes.xs + 1,
+      fontWeight: '800',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+    },
+    addressText: {
+      fontSize: 11,
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      lineHeight: 16,
+    },
+    customerActionsRow: {
+      flexDirection: 'row',
+      gap: Spacing.sm,
+      marginTop: 4,
+    },
+    customerCallBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? '#1F2937' : '#F0FDFA',
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
+      borderColor: isDark ? '#374151' : '#CCFBF1',
+    },
+    customerCallBtnText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: isDark ? '#2DD4BF' : CustomerColors.teal700,
+    },
+    customerMapBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: '#EFF6FF',
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: BorderRadius.md,
+    },
+    customerMapBtnText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#2563EB',
+    },
+    milestoneButtonsRow: {
+      flexDirection: 'row',
+      gap: Spacing.xs,
+    },
+    milestoneBtn: {
+      flex: 1,
+      minHeight: 46,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
+      borderColor: isDark ? '#374151' : CustomerColors.steelBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+    },
+    milestoneBtnActive: {
+      backgroundColor: CustomerColors.teal600,
+      borderColor: CustomerColors.teal600,
+    },
+    milestoneBtnText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: isDark ? '#9CA3AF' : '#4B5563',
+      textAlign: 'center',
+      alignSelf: 'center',
+    },
+    milestoneBtnTextActive: {
+      color: '#FFFFFF',
+    },
+    timelineList: {
+      gap: 8,
+    },
+    emptyTimelineText: {
+      fontSize: 11,
+      color: isDark ? '#6B7280' : '#9CA3AF',
+      fontStyle: 'italic',
+    },
+    timelineItem: {
+      flexDirection: 'row',
+      gap: 8,
+      padding: Spacing.sm,
+      backgroundColor: isDark ? '#1F2937' : '#F9FAFB',
+      borderRadius: BorderRadius.md,
+    },
+    timelineIndexWrap: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: isDark ? '#134e4a' : '#F0FDFA',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    timelineIndexText: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: isDark ? '#2DD4BF' : CustomerColors.teal700,
+    },
+    timelineStatus: {
+      fontSize: FontSizes.xs,
+      fontWeight: '800',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+    },
+    timelineTime: {
+      fontSize: 10,
+      color: isDark ? '#6B7280' : '#9CA3AF',
+    },
+    timelineNote: {
+      fontSize: 10,
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      marginTop: 2,
+    },
+    itemsList: {
+      gap: 8,
+    },
+    itemRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    itemTitle: {
+      fontSize: FontSizes.xs,
+      fontWeight: '700',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+    },
+    itemBrand: {
+      fontSize: 10,
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+    },
+    itemQty: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: isDark ? '#9CA3AF' : '#6B7280',
+    },
+    itemPrice: {
+      fontSize: FontSizes.xs,
+      fontWeight: '800',
+      color: isDark ? '#2DD4BF' : CustomerColors.teal700,
+    },
+    divider: {
+      height: 1,
+      backgroundColor: isDark ? '#1F2937' : '#F3F4F6',
+      marginVertical: 4,
+    },
+    totalRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingTop: 4,
+    },
+    totalLabel: {
+      fontSize: FontSizes.xs,
+      fontWeight: '700',
+      color: isDark ? '#9CA3AF' : '#6B7280',
+    },
+    totalValue: {
+      fontSize: FontSizes.base,
+      fontWeight: '900',
+      color: isDark ? '#2DD4BF' : CustomerColors.teal700,
+    },
+    otpModalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: Spacing.md,
+    },
+    otpModalCard: {
+      width: '100%',
+      maxWidth: 360,
+      backgroundColor: isDark ? '#111827' : '#fff',
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      alignItems: 'center',
+      gap: Spacing.xs,
+      borderWidth: isDark ? 1 : 0,
+      borderColor: isDark ? '#1F2937' : 'transparent',
+    },
+    otpModalIconWrap: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: isDark ? '#14532d' : '#DCFCE7',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 4,
+    },
+    otpModalTitle: {
+      fontSize: FontSizes.base,
+      fontWeight: '800',
+      color: isDark ? '#F9FAFB' : CustomerColors.black,
+    },
+    otpModalSubtitle: {
+      fontSize: FontSizes.xs,
+      color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      textAlign: 'center',
+      marginBottom: Spacing.sm,
+    },
+    otpInput: {
+      width: '100%',
+      letterSpacing: 8,
+      textAlign: 'center',
+      fontSize: 22,
+      fontWeight: '800',
+      fontFamily: 'monospace',
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: isDark ? '#374151' : '#D1D5DB',
+      borderRadius: BorderRadius.md,
+      backgroundColor: isDark ? '#1F2937' : '#F9FAFB',
+      color: isDark ? '#F9FAFB' : '#111827',
+      marginVertical: 10,
+    },
+    otpErrorText: {
+      color: '#EF4444',
+      fontSize: 11,
+      fontWeight: '600',
+      marginBottom: 6,
+      textAlign: 'center',
+    },
+    otpModalBtnRow: {
+      flexDirection: 'row',
+      gap: 10,
+      width: '100%',
+      marginTop: 8,
+    },
+    otpModalCancelBtn: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
+      borderColor: isDark ? '#374151' : '#E5E7EB',
+      alignItems: 'center',
+    },
+    otpModalCancelText: {
+      fontSize: FontSizes.xs,
+      fontWeight: '700',
+      color: isDark ? '#D1D5DB' : '#374151',
+    },
+    otpModalSubmitBtn: {
+      flex: 1,
+      backgroundColor: '#16A34A',
+      paddingVertical: 12,
+      borderRadius: BorderRadius.md,
+      alignItems: 'center',
+    },
+    otpModalSubmitText: {
+      color: '#fff',
+      fontSize: FontSizes.xs,
+      fontWeight: '700',
+    },
+  });

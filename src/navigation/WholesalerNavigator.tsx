@@ -1,0 +1,695 @@
+import React, { useState, useMemo } from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import {
+  BarChart2,
+  Package,
+  ShoppingBag,
+  Settings as SettingsIcon,
+  Bell,
+  User as UserIcon,
+  Truck,
+  Store,
+  SlidersHorizontal,
+  LogOut,
+  CheckCircle,
+  AlertCircle,
+  Layers,
+  Plus,
+  Tag,
+  Users,
+  Globe,
+} from 'lucide-react-native';
+import LanguageSelectorModal from '../components/common/LanguageSelectorModal';
+import { useTranslation } from '../i18n';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import RemiseLoading from '../components/common/RemiseLoading';
+import {
+  SellerDashboardProvider,
+  useSellerDashboard,
+} from '../context/SellerDashboardContext';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import SellerOverviewScreen from '../screens/seller/SellerOverviewScreen';
+import SellerCategoriesScreen from '../screens/seller/SellerCategoriesScreen';
+import SellerProductsScreen from '../screens/seller/SellerProductsScreen';
+import StoreOffersScreen from '../screens/store/StoreOffersScreen';
+import StoreCustomersScreen from '../screens/store/StoreCustomersScreen';
+import NewOfferScreen from '../screens/store/NewOfferScreen';
+import SellerManageBrandsScreen from '../screens/seller/SellerManageBrandsScreen';
+import SellerProductFormScreen from '../screens/seller/SellerProductFormScreen';
+import SellerScanUploadScreen from '../screens/seller/SellerScanUploadScreen';
+import SellerBulkScanUploadScreen from '../screens/seller/SellerBulkScanUploadScreen';
+import SellerOrdersScreen from '../screens/seller/SellerOrdersScreen';
+import SellerSettingsScreen from '../screens/seller/SellerSettingsScreen';
+import ProfileScreen from '../screens/customer/ProfileScreen';
+import NotificationScreen from '../screens/customer/NotificationsScreen';
+import AccountSettingsScreen from '../screens/customer/SettingsScreen';
+import ProductDetailScreen from '../screens/customer/ProductDetailScreen';
+import OrdersScreen from '../screens/customer/OrdersScreen';
+import MyOffersScreen from '../screens/customer/MyOffersScreen';
+import WishlistScreen from '../screens/customer/WishlistScreen';
+import OrderDetailScreen from '../screens/customer/OrderDetailScreen';
+import OrderTrackingScreen from '../screens/customer/OrderTrackingScreen';
+import StoreDeliveriesScreen from '../screens/store/StoreDeliveriesScreen';
+import StoreOrderTrackingScreen from '../screens/store/StoreOrderTrackingScreen';
+import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
+import { CustomerColors, Spacing, FontSizes, BorderRadius } from '../styles/theme';
+
+export type WholesalerTabParamList = {
+  WholesalerOverview: undefined;
+  WholesalerCategories: undefined;
+  WholesalerProducts: undefined;
+  WholesalerOffers: undefined;
+  WholesalerCustomers: undefined;
+  WholesalerOrders: undefined;
+  WholesalerSettings: undefined;
+};
+
+export type WholesalerStackParamList = {
+  WholesalerTabs: undefined;
+  WholesalerOffers: undefined;
+  WholesalerCustomers: undefined;
+  NewOffer: { offer?: any; targetCustomerId?: string; targetCustomerName?: string } | undefined;
+  SellerCategories: undefined;
+  SellerProductForm: {
+    product?: any;
+    initialTitle?: string;
+    initialCategory?: string;
+  };
+  SellerManageBrands: {
+    typeKey: string;
+    title: string;
+    category: string;
+    items: any[];
+    brandCount: number;
+    totalStock: number;
+  };
+  SellerScanUpload: undefined;
+  SellerBulkScanUpload: undefined;
+  StoreDeliveries: undefined;
+  StoreOrderTracking: { orderId: string };
+  Notifications: undefined;
+  Profile: undefined;
+  Orders: undefined;
+  OrderDetail: { orderId: string };
+  OrderTracking: { orderId: string };
+  Settings:
+    | { initialTab?: 'account' | 'preferences' | 'security' | 'notifications' }
+    | undefined;
+  MyOffers: undefined;
+  Wishlist: undefined;
+  AccountSettings:
+    | { initialTab?: 'account' | 'preferences' | 'security' | 'notifications' }
+    | undefined;
+  StoreRegister: undefined;
+  ProductDetail: { productId: string };
+};
+
+const Tab = createBottomTabNavigator<WholesalerTabParamList>();
+const Stack = createNativeStackNavigator<WholesalerStackParamList>();
+
+function WholesalerHeaderTitle({ children }: { children?: string }) {
+  const { store } = useSellerDashboard();
+  const { isDark } = useTheme();
+  const { t } = useTranslation();
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+  return (
+    <View style={styles.headerTitleWrap}>
+      <View style={styles.headerNameRow}>
+        <Truck size={14} color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+        <Text style={styles.headerStoreName} numberOfLines={1}>
+          {store?.name || t('store.wholesalerDashboard')}
+        </Text>
+        <View style={styles.roleBadge}>
+          <Text style={styles.roleBadgeText}>{t('store.wholesaler') || 'Wholesaler'}</Text>
+        </View>
+      </View>
+      <Text style={styles.headerTabTitle}>{children}</Text>
+    </View>
+  );
+}
+
+function WholesalerUserMenu() {
+  const navigation = useNavigation<any>();
+  const { user, logout } = useAuth();
+  const { isDark } = useTheme();
+  const { t } = useTranslation();
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+  const [open, setOpen] = useState(false);
+
+  const displayName = user?.fullname || user?.name || t('store.wholesaler') || 'Wholesaler';
+  const isVerified = user?.isEmailVerified !== false;
+
+  const close = () => setOpen(false);
+  const go = (screen: string, params?: any) => {
+    close();
+    navigation.navigate(screen, params);
+  };
+  const handleSignOut = () => {
+    close();
+    logout();
+  };
+
+  return (
+    <>
+      <TouchableOpacity style={styles.headerIconBtn} onPress={() => setOpen(true)}>
+        <UserIcon size={18} color={CustomerColors.primary} />
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
+        <Pressable style={styles.menuBackdrop} onPress={close}>
+          <Pressable style={styles.menuCard} onPress={() => {}}>
+            <View style={styles.menuHeader}>
+              <View style={styles.menuHeaderRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.menuName} numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                  <Text style={styles.menuEmail} numberOfLines={1}>
+                    {user?.email}
+                  </Text>
+                  <View style={styles.roleTag}>
+                    <Text style={styles.roleTagText}>📦 {t('store.wholesaler') || 'Wholesaler'}</Text>
+                  </View>
+                </View>
+                {isVerified ? (
+                  <View style={styles.verifiedBadge}>
+                    <CheckCircle size={9} color="#15803D" />
+                    <Text style={styles.verifiedBadgeText}>{t('profile.verified') || 'Verified'}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.unverifiedBadge}>
+                    <AlertCircle size={9} color="#B45309" />
+                    <Text style={styles.unverifiedBadgeText}>{t('profile.verify') || 'Verify'}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.menuLinks}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => go('Profile')}>
+                <UserIcon size={15} color="#9CA3AF" />
+                <Text style={styles.menuItemText}>{t('common.myProfile') || 'My Profile'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => go('Orders')}>
+                <ShoppingBag size={15} color="#9CA3AF" />
+                <Text style={styles.menuItemText}>{t('common.myOrders') || 'My Orders'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => go('MyOffers')}>
+                <Tag size={15} color="#9CA3AF" />
+                <Text style={styles.menuItemText}>{t('store.offersTab') || 'My Offers'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => go('WholesalerTabs')}>
+                <Store size={15} color="#9CA3AF" />
+                <Text style={styles.menuItemText}>{t('store.wholesalerDashboard') || 'Wholesale Dashboard'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => go('StoreDeliveries')}>
+                <Truck size={15} color="#9CA3AF" />
+                <Text style={styles.menuItemText}>{t('store.deliveriesTab') || 'Deliveries Log'}</Text>
+              </TouchableOpacity>
+
+              <View style={styles.menuDivider} />
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => go('AccountSettings', { initialTab: 'account' })}
+              >
+                <SettingsIcon size={15} color="#9CA3AF" />
+                <Text style={styles.menuItemText}>{t('store.settingsTab') || 'Settings'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => go('AccountSettings', { initialTab: 'preferences' })}
+              >
+                <SlidersHorizontal size={15} color="#9CA3AF" />
+                <Text style={styles.menuItemText}>{t('settings.preferencesTab') || 'Preferences'}</Text>
+              </TouchableOpacity>
+
+              <View style={styles.menuDivider} />
+
+              <TouchableOpacity style={styles.menuItem} onPress={handleSignOut}>
+                <LogOut size={15} color="#FF0000" />
+                <Text style={[styles.menuItemText, { color: '#FF0000' }]}>{t('store.signOutBtn') || 'Sign Out'}</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+function WholesalerHeaderRight() {
+  const navigation = useNavigation<any>();
+  const { unreadCount } = useUnreadNotifications();
+  const { isDark } = useTheme();
+  const [langModalVisible, setLangModalVisible] = useState(false);
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+  return (
+    <View style={styles.headerIconRow}>
+      <TouchableOpacity
+        style={styles.headerIconBtn}
+        onPress={() => setLangModalVisible(true)}
+      >
+        <Globe size={18} color={isDark ? '#2DD4BF' : CustomerColors.primary} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.headerIconBtn}
+        onPress={() => navigation.navigate('Notifications')}
+      >
+        <Bell size={18} color={CustomerColors.primary} />
+        {unreadCount > 0 && (
+          <View style={styles.headerIconBadge}>
+            <Text style={styles.headerIconBadgeText}>{unreadCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+      <WholesalerUserMenu />
+      <LanguageSelectorModal
+        visible={langModalVisible}
+        onClose={() => setLangModalVisible(false)}
+        isDark={isDark}
+      />
+    </View>
+  );
+}
+
+function WholesalerTabs() {
+  const { newOrderCount } = useSellerDashboard();
+  const { isDark } = useTheme();
+  const { t } = useTranslation();
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: true,
+        headerTitle: props => <WholesalerHeaderTitle {...props} />,
+        headerRight: () => <WholesalerHeaderRight />,
+        headerStyle: { backgroundColor: isDark ? '#111827' : '#FFFFFF', borderBottomColor: isDark ? '#1F2937' : '#EAEAEA' },
+        headerTintColor: isDark ? '#F9FAFB' : '#111827',
+        tabBarStyle: { backgroundColor: isDark ? '#111827' : '#FFFFFF', borderTopColor: isDark ? '#1F2937' : '#EAEAEA' },
+        tabBarActiveTintColor: isDark ? '#2DD4BF' : CustomerColors.teal700,
+        tabBarInactiveTintColor: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+      }}
+    >
+      <Tab.Screen
+        name="WholesalerOverview"
+        component={SellerOverviewScreen}
+        options={{
+          title: t('store.overview'),
+          tabBarIcon: ({ color, size }) => <BarChart2 color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="WholesalerCategories"
+        component={SellerCategoriesScreen}
+        options={{
+          title: t('store.categoriesTab'),
+          tabBarIcon: ({ color, size }) => <Layers color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="WholesalerProducts"
+        component={SellerProductsScreen}
+        options={{
+          title: t('store.productsTab'),
+          tabBarIcon: ({ color, size }) => <Package color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="WholesalerOffers"
+        component={StoreOffersScreen}
+        options={{
+          title: t('store.offersTab'),
+          tabBarIcon: ({ color, size }) => <Tag color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="WholesalerCustomers"
+        component={StoreCustomersScreen}
+        options={{
+          title: t('store.customersTab'),
+          tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="WholesalerOrders"
+        component={SellerOrdersScreen}
+        options={{
+          title: t('store.incomingOrders'),
+          tabBarIcon: ({ color, size }) => <ShoppingBag color={color} size={size} />,
+          tabBarBadge: newOrderCount > 0 ? newOrderCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: '#FF0000' },
+        }}
+      />
+      <Tab.Screen
+        name="WholesalerSettings"
+        component={SellerSettingsScreen}
+        options={{
+          title: t('store.settingsTab'),
+          tabBarIcon: ({ color, size }) => <SettingsIcon color={color} size={size} />,
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
+function WholesalerDashboardGate({ children }: { children: React.ReactNode }) {
+  const navigation = useNavigation<any>();
+  const { loading, noStore } = useSellerDashboard();
+  const { isDark } = useTheme();
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+
+  if (loading) {
+    return (
+      <RemiseLoading
+        fullscreen
+        message="Loading Wholesale Business..."
+        subMessage="Fetching wholesale inventory & orders"
+      />
+    );
+  }
+
+  if (noStore) {
+    return (
+      <View style={styles.center}>
+        <View style={styles.noStoreIconCircle}>
+          <Truck size={32} color={isDark ? '#2DD4BF' : CustomerColors.teal700} />
+        </View>
+        <Text style={styles.noStoreTitle}>No wholesale business profile found</Text>
+        <Text style={styles.noStoreSubtitle}>
+          Please register your wholesale business to start managing bulk orders.
+        </Text>
+        <TouchableOpacity
+          style={styles.registerBtn}
+          onPress={() => navigation.navigate('StoreRegister')}
+        >
+          <Plus size={16} color="#FFFFFF" />
+          <Text style={styles.registerBtnText}>Register Wholesale Business</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+export default function WholesalerNavigator() {
+  const { isDark } = useTheme();
+  const { t } = useTranslation();
+  return (
+    <SellerDashboardProvider>
+      <WholesalerDashboardGate>
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            headerStyle: { backgroundColor: isDark ? '#111827' : '#FFFFFF' },
+            headerTintColor: isDark ? '#F9FAFB' : '#111827',
+          }}
+        >
+          <Stack.Screen name="WholesalerTabs" component={WholesalerTabs} />
+          <Stack.Screen
+            name="NewOffer"
+            component={NewOfferScreen}
+            options={{ headerShown: true, title: t('store.newOfferBtn') || 'Create Offer' }}
+          />
+          <Stack.Screen
+            name="SellerCategories"
+            component={SellerCategoriesScreen}
+            options={{ headerShown: true, title: t('store.categoriesTab') || 'Wholesale Categories' }}
+          />
+          <Stack.Screen
+            name="SellerProductForm"
+            component={SellerProductFormScreen}
+            options={{ headerShown: true, title: t('store.productsTab') || 'Wholesale Product' }}
+          />
+          <Stack.Screen
+            name="SellerManageBrands"
+            component={SellerManageBrandsScreen}
+            options={{ headerShown: true, title: t('store.manageBrands') || 'Manage Wholesale Brands' }}
+          />
+          <Stack.Screen
+            name="SellerScanUpload"
+            component={SellerScanUploadScreen}
+            options={{ headerShown: true, title: t('store.scanPaperList') || 'Scan Paper & Add Product' }}
+          />
+          <Stack.Screen
+            name="SellerBulkScanUpload"
+            component={SellerBulkScanUploadScreen}
+            options={{ headerShown: true, title: t('store.bulkProductScan') || 'Scan Wholesale Product List' }}
+          />
+          <Stack.Screen
+            name="Profile"
+            component={ProfileScreen}
+            options={{ headerShown: true, title: t('common.myProfile') || 'Profile' }}
+          />
+          <Stack.Screen
+            name="Orders"
+            component={OrdersScreen}
+            options={{ headerShown: true, title: t('common.myOrders') || 'My Orders' }}
+          />
+          <Stack.Screen
+            name="OrderDetail"
+            component={OrderDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="OrderTracking"
+            component={OrderTrackingScreen}
+            options={{ headerShown: true, title: t('order.trackOrder') || 'Track Order' }}
+          />
+          <Stack.Screen
+            name="Settings"
+            component={AccountSettingsScreen}
+            options={{ headerShown: true, title: t('settings.settingsTitle') || 'Settings' }}
+          />
+          <Stack.Screen
+            name="MyOffers"
+            component={MyOffersScreen}
+            options={{ headerShown: true, title: t('store.offersTab') || 'My Offers' }}
+          />
+          <Stack.Screen
+            name="Wishlist"
+            component={WishlistScreen}
+            options={{ headerShown: true, title: t('common.myWishlist') || 'My Wishlist' }}
+          />
+          <Stack.Screen
+            name="Notifications"
+            component={NotificationScreen}
+            options={{ headerShown: true, title: t('common.notifications') || 'Notifications' }}
+          />
+          <Stack.Screen
+            name="AccountSettings"
+            component={AccountSettingsScreen}
+            options={{ headerShown: true, title: t('store.settingsTab') || 'Settings' }}
+          />
+          <Stack.Screen
+            name="StoreDeliveries"
+            component={StoreDeliveriesScreen}
+            options={{ headerShown: true, title: t('store.deliveriesTab') || 'Deliveries Log' }}
+          />
+          <Stack.Screen
+            name="StoreOrderTracking"
+            component={StoreOrderTrackingScreen}
+            options={{ headerShown: true, title: t('store.orderTracking') || 'Live Order Tracking' }}
+          />
+          <Stack.Screen
+            name="ProductDetail"
+            component={ProductDetailScreen}
+            options={{ headerShown: false }}
+          />
+        </Stack.Navigator>
+      </WholesalerDashboardGate>
+    </SellerDashboardProvider>
+  );
+}
+
+const getStyles = (isDark: boolean) => StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? '#0a0f1d' : CustomerColors.bg,
+    padding: Spacing.xl,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: FontSizes.sm,
+    color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+    marginTop: Spacing.sm,
+  },
+  noStoreIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: isDark ? 'rgba(15, 163, 177, 0.15)' : CustomerColors.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+  noStoreTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: '700',
+    color: isDark ? '#F9FAFB' : CustomerColors.black,
+    marginTop: 8,
+  },
+  noStoreSubtitle: {
+    fontSize: FontSizes.sm,
+    color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+    textAlign: 'center',
+    maxWidth: 280,
+    marginBottom: Spacing.lg,
+  },
+  registerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: CustomerColors.primary,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.lg,
+  },
+  registerBtnText: {
+    color: '#FFFFFF',
+    fontSize: FontSizes.sm,
+    fontWeight: '700',
+  },
+  headerTitleWrap: { alignItems: 'center' },
+  headerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerStoreName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: isDark ? '#F9FAFB' : CustomerColors.black,
+    maxWidth: 160,
+  },
+  roleBadge: {
+    backgroundColor: isDark ? 'rgba(15, 163, 177, 0.15)' : CustomerColors.mint,
+    borderWidth: 1,
+    borderColor: isDark ? '#374151' : CustomerColors.steelBorder,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  roleBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: isDark ? '#2DD4BF' : CustomerColors.teal700,
+  },
+  headerTabTitle: {
+    fontSize: 11,
+    color: isDark ? '#9CA3AF' : CustomerColors.textSecondary,
+    marginTop: 1,
+  },
+  headerIconRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginRight: 8,
+    alignItems: 'center',
+  },
+  headerIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: CustomerColors.primary,
+    borderRadius: 8,
+    minWidth: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  headerIconBadgeText: { color: '#fff', fontSize: 8, fontWeight: '800' },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'flex-end',
+    paddingTop: 56,
+    paddingRight: 12,
+  },
+  menuCard: {
+    width: 250,
+    backgroundColor: isDark ? '#111827' : '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: isDark ? '#1F2937' : CustomerColors.steelBorder,
+    overflow: 'hidden',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  menuHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: isDark ? 'rgba(15, 163, 177, 0.15)' : '#DFF1F1',
+    borderBottomWidth: 1,
+    borderBottomColor: isDark ? '#1F2937' : CustomerColors.steelBorder,
+  },
+  menuHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  menuName: { fontSize: 14, fontWeight: '800', color: isDark ? '#F9FAFB' : '#111827' },
+  menuEmail: { fontSize: 11, color: isDark ? '#9CA3AF' : '#6B7280', marginTop: 1 },
+  roleTag: {
+    backgroundColor: isDark ? 'rgba(15, 163, 177, 0.15)' : 'rgba(15, 163, 177, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  roleTagText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: isDark ? '#2DD4BF' : CustomerColors.teal700,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  verifiedBadgeText: { fontSize: 9, fontWeight: '700', color: isDark ? '#4ADE80' : '#15803D' },
+  unverifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: isDark ? 'rgba(217, 119, 6, 0.2)' : '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  unverifiedBadgeText: { fontSize: 9, fontWeight: '700', color: isDark ? '#FBBF24' : '#B45309' },
+  menuLinks: { paddingVertical: 4 },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+  },
+  menuItemText: { fontSize: 13, color: isDark ? '#E5E7EB' : '#374151', fontWeight: '500' },
+  menuDivider: {
+    height: 1,
+    backgroundColor: isDark ? '#1F2937' : CustomerColors.steelBorder,
+    marginVertical: 4,
+  },
+});

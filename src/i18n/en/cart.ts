@@ -1,0 +1,27 @@
+import { TranslationSchema } from '../types';
+
+export const cart: TranslationSchema['cart'] = {
+  yourCart: 'Your Cart',
+  cartEmpty: 'Your Cart is Empty',
+  cartEmptyDesc: 'Looks like you have not added anything to your cart yet.',
+  startShopping: 'Start Shopping',
+  continueShopping: 'Continue Shopping',
+  itemCount: '{{count}} items',
+  subtotal: 'Subtotal',
+  subtotalItems: 'Subtotal ({{count}} items)',
+  delivery: 'Delivery',
+  deliveryFee: 'Delivery Fee',
+  free: 'FREE',
+  freeDeliveryNudge: 'Add ₹{{amount}} more to get FREE delivery!',
+  freeDeliveryUnlocked: "You've unlocked free delivery!",
+  total: 'Total',
+  totalAmount: 'Total Amount',
+  proceedToCheckout: 'Proceed to Checkout',
+  loginToCheckout: 'Login to Checkout',
+  loginToCheckoutDesc: 'Please sign in or register to proceed to checkout.',
+  clearCart: 'Clear Cart',
+  removeConfirm: 'Are you sure you want to remove this item?',
+  itemRemoved: 'Item removed from cart',
+  moveToWishlist: 'Move to Wishlist',
+  platformFee: 'Platform Fee',
+};

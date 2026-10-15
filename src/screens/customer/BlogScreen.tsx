@@ -1,0 +1,906 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  Modal,
+  Image,
+  RefreshControl,
+} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import {
+  Sparkles,
+  ShoppingBag,
+  Building2,
+  Cpu,
+  Newspaper,
+  Megaphone,
+  Search,
+  Clock,
+  ArrowRight,
+  Bell,
+  Lightbulb,
+  Mail,
+  Check,
+  X,
+  User,
+  Calendar,
+} from 'lucide-react-native';
+import { CustomerColors, Spacing, FontSizes, BorderRadius } from '../../styles/theme';
+import { resolveImageUrl } from '../../utils/imageUrl';
+import { newsletterApi } from '../../api/newsletterApi';
+import { blogApi } from '../../api/blogApi';
+import { useTheme } from '../../context/ThemeContext';
+import { useTranslation, translatePressContent, translateDate } from '../../i18n';
+import { getBlogData, formatReadTime } from '../../i18n/blogTranslations';
+import { useAuth } from '../../context/AuthContext';
+import AuthRequiredModal from '../../components/common/AuthRequiredModal';
+
+const BRAND_RED = CustomerColors.primary;
+
+type Category =
+  | 'All'
+  | 'Shopping Tips'
+  | 'Business'
+  | 'Technology'
+  | 'Remise News'
+  | 'Offers'
+  | 'General';
+
+const CATEGORIES: Category[] = [
+  'All',
+  'Shopping Tips',
+  'Business',
+  'Technology',
+  'Remise News',
+  'Offers',
+];
+
+const CATEGORY_ICON: Record<string, any> = {
+  All: Sparkles,
+  'Shopping Tips': ShoppingBag,
+  Business: Building2,
+  Technology: Cpu,
+  'Remise News': Newspaper,
+  Offers: Megaphone,
+  General: Newspaper,
+};
+
+type Article = {
+  id: string;
+  category: Category;
+  title: string;
+  excerpt: string;
+  body?: string[];
+  readTime: string;
+  date: string;
+  author?: string;
+  image?: string;
+  featured?: boolean;
+  type?: string;
+};
+
+const DEFAULT_ARTICLES: Article[] = [
+  {
+    id: 'making-local-shopping-smarter',
+    category: 'Remise News',
+    title: 'Making Local Shopping Smarter',
+    excerpt:
+      'Discover how Remise brings customers and local businesses together, helping shoppers find products, compare options, and choose where to buy.',
+    body: [
+      'Shopping for everyday products can be more complicated than it needs to be. Customers often check several stores, compare prices manually, and still aren\'t sure they found the best option nearby.',
+      'Remise was built to close that gap. Instead of guessing which store has what you need, you can search or scan once and see what\'s actually available around you — along with pricing, so comparing options takes seconds instead of a trip across town.',
+      'For the businesses on the other side of that search, the platform works the same way in reverse. A store owner, wholesaler, or home business can list what they carry, keep pricing current, and reach customers who are already looking for exactly that product in their area.',
+      'That\'s the core idea behind Remise: less friction for the person trying to find something, and a simpler way for local businesses to be found.',
+    ],
+    readTime: '5 min read',
+    date: 'September 2026',
+    author: 'Team Remise',
+    featured: true,
+  },
+  {
+    id: 'compare-prices-before-you-buy',
+    category: 'Shopping Tips',
+    title: 'How to Compare Prices Before You Buy',
+    excerpt: 'Five practical habits that make it easier to spot a genuinely good deal nearby.',
+    body: [
+      'A lower price isn\'t always a better deal once you factor in distance, stock, and how current the listing actually is. A few habits make comparison shopping faster and more reliable.',
+      'Start with what you actually need, not the closest match. Searching for the specific product narrows results before you start comparing.',
+      'Check availability before price. A great price at a store that\'s out of stock isn\'t a deal at all.',
+    ],
+    readTime: '4 min read',
+    date: 'August 2026',
+    author: 'Team Remise',
+  },
+  {
+    id: 'ai-modern-shopping',
+    category: 'Technology',
+    title: 'How Technology Is Changing Local Shopping',
+    excerpt: 'A look at scanning, search, and discovery tools quietly reshaping how people shop nearby.',
+    readTime: '6 min read',
+    date: 'August 2026',
+    author: 'Team Remise',
+  },
+  {
+    id: 'grow-your-business-online',
+    category: 'Business',
+    title: 'Growing Your Local Business Online',
+    excerpt: 'Simple, practical steps for store owners and home businesses building a digital presence.',
+    readTime: '5 min read',
+    date: 'July 2026',
+    author: 'Team Remise',
+  },
+  {
+    id: 'whats-new-in-remise',
+    category: 'Remise News',
+    title: "What's New in Remise",
+    excerpt: 'Recent additions to the platform, in plain language, with no changelog jargon.',
+    readTime: '3 min read',
+    date: 'July 2026',
+    author: 'Team Remise',
+  },
+  {
+    id: 'product-scanning-explained',
+    category: 'Technology',
+    title: 'Product Scanning, Explained',
+    excerpt: 'How scanning a product or list helps you find it at nearby stores in seconds.',
+    readTime: '4 min read',
+    date: 'June 2026',
+    author: 'Team Remise',
+  },
+  {
+    id: 'managing-inventory-digitally',
+    category: 'Business',
+    title: 'Managing Products and Inventory Digitally',
+    excerpt: 'Why keeping stock and pricing current online matters more than it seems.',
+    readTime: '5 min read',
+    date: 'June 2026',
+    author: 'Team Remise',
+  },
+  {
+    id: 'finding-products-near-you',
+    category: 'Shopping Tips',
+    title: 'Tips for Finding Products Near You',
+    excerpt: 'Search habits that narrow results fast when you know roughly what you want.',
+    readTime: '3 min read',
+    date: 'May 2026',
+    author: 'Team Remise',
+  },
+];
+
+const DEFAULT_UPDATES = [
+  {
+    icon: Sparkles,
+    tag: 'New feature',
+    text: 'Product list scanning is now available.',
+  },
+  {
+    icon: Bell,
+    tag: 'Update',
+    text: 'Store comparison now shows total pricing at a glance.',
+  },
+  {
+    icon: Megaphone,
+    tag: 'Announcement',
+    text: 'New businesses are joining Remise every week.',
+  },
+];
+
+const BUSINESS_TOPICS = [
+  { icon: Building2, title: 'Grow Your Business', desc: 'Reach more customers with a clear digital storefront.' },
+  { icon: Cpu, title: 'Manage Your Products', desc: 'Keep listings, pricing, and stock accurate with less effort.' },
+  { icon: Megaphone, title: 'Reach Local Customers', desc: 'Show up for the shoppers already searching nearby.' },
+];
+
+export default function BlogScreen({ navigation }: any) {
+  const { isDark } = useTheme();
+  const { language } = useTranslation();
+  const blogData = getBlogData(language as any);
+  const { user, token } = useAuth();
+  const [activeCategory, setActiveCategory] = useState<Category>('All');
+  const [query, setQuery] = useState('');
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [subscribed, setSubscribed] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Dynamic live articles state
+  const [articles, setArticles] = useState<Article[]>(DEFAULT_ARTICLES);
+  const [updates, setUpdates] = useState<any[]>(DEFAULT_UPDATES);
+  const [loadingArticles, setLoadingArticles] = useState(false);
+
+  // Reader Modal state
+  const [readerModalVisible, setReaderModalVisible] = useState(false);
+  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+
+  // Dynamic theme colors
+  const themeColors = {
+    bg: isDark ? '#0B0F19' : '#F8FAFC',
+    card: isDark ? '#131D31' : '#FFFFFF',
+    border: isDark ? '#1E293B' : '#E2E8F0',
+    textPrimary: isDark ? '#FFFFFF' : '#0F172A',
+    textSecondary: isDark ? '#94A3B8' : '#64748B',
+    inputBg: isDark ? '#141414' : '#FFFFFF',
+    chipBg: isDark ? '#111111' : '#FFFFFF',
+    chipBorder: isDark ? '#262626' : '#E2E8F0',
+    highlightCardBg: isDark ? '#111111' : '#FFF1F2',
+  };
+
+  const fetchLiveArticles = async () => {
+    try {
+      setLoadingArticles(true);
+      const res = await blogApi.getArticles();
+      if (res?.success && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped: Article[] = res.data.map((item: any) => ({
+          id: item.slug || item._id || item.id,
+          category: item.category as Category,
+          title: item.title,
+          excerpt: item.excerpt,
+          body: Array.isArray(item.body) && item.body.length > 0 ? item.body : [item.excerpt],
+          readTime: item.readTime || '4 min read',
+          date: item.date || (item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '2026'),
+          author: item.author || 'Team Remise',
+          image: item.image || '',
+          featured: Boolean(item.featured),
+          type: item.type || 'blog',
+        }));
+        setArticles(mapped);
+
+        // Update news strip if news items exist
+        const news = res.data.filter((d: any) => d.type === 'news');
+        if (news.length > 0) {
+          setUpdates(
+            news.map((n: any) => ({
+              icon: Newspaper,
+              tag: n.category || 'News',
+              text: n.title,
+            }))
+          );
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch live articles in BlogScreen:', err);
+    } finally {
+      setLoadingArticles(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveArticles();
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchLiveArticles();
+    }, [])
+  );
+
+  const featured = useMemo(() => articles.find((a) => a.featured) ?? articles[0], [articles]);
+
+  const filteredArticles = useMemo(() => {
+    return articles.filter((a) => {
+      if (featured && a.id === featured.id) return false;
+      const matchesCategory = activeCategory === 'All' || a.category === activeCategory;
+      const matchesQuery =
+        query.trim() === '' ||
+        a.title.toLowerCase().includes(query.toLowerCase()) ||
+        a.excerpt.toLowerCase().includes(query.toLowerCase());
+      return matchesCategory && matchesQuery;
+    });
+  }, [activeCategory, query, featured, articles]);
+
+  const openReader = (art: Article) => {
+    setSelectedArticle(art);
+    setReaderModalVisible(true);
+  };
+
+  const handleSubscribe = async () => {
+    if (!user && !token) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    const trimmed = newsletterEmail.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+    setSubscribing(true);
+    try {
+      const res = await newsletterApi.subscribe(trimmed, 'mobile_blog');
+      const isDup = res?.data?.isDuplicate;
+      setSubscribed(true);
+      if (isDup) {
+        Alert.alert('Already Subscribed', "You're already subscribed to Remise updates!");
+      } else {
+        Alert.alert('Subscribed!', 'Thank you for subscribing to Remise stories & updates.');
+      }
+      setNewsletterEmail('');
+    } catch {
+      setSubscribed(true);
+      Alert.alert('Subscribed!', 'Thank you for subscribing to Remise stories & updates.');
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
+  return (
+    <ScrollView
+      style={[styles.container, { backgroundColor: themeColors.bg }]}
+      contentContainerStyle={{ paddingBottom: Spacing.xxl }}
+      refreshControl={
+        <RefreshControl
+          refreshing={loadingArticles}
+          onRefresh={fetchLiveArticles}
+          tintColor={BRAND_RED}
+          colors={[BRAND_RED]}
+        />
+      }
+    >
+      {/* HERO / TITLE */}
+      <View style={styles.hero}>
+        <View style={styles.badge}>
+          <Newspaper size={13} color={BRAND_RED} />
+          <Text style={styles.badgeText}>{blogData.eyebrow}</Text>
+        </View>
+        <Text style={[styles.heroTitle, { color: themeColors.textPrimary }]}>{blogData.heroTitle}</Text>
+        <Text style={[styles.heroSubtitle, { color: themeColors.textSecondary }]}>{blogData.heroSubtitle}</Text>
+
+        {/* SEARCH BAR */}
+        <View style={[styles.searchContainer, { backgroundColor: themeColors.inputBg, borderColor: themeColors.border }]}>
+          <Search size={16} color={BRAND_RED} />
+          <TextInput
+            style={[styles.searchInput, { color: themeColors.textPrimary }]}
+            placeholder={blogData.searchPlaceholder}
+            placeholderTextColor={themeColors.textSecondary}
+            value={query}
+            onChangeText={setQuery}
+          />
+        </View>
+      </View>
+
+      {/* CATEGORY SELECTOR */}
+      <View style={styles.categoryScrollWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryList}
+        >
+          {CATEGORIES.map((cat) => {
+            const Icon = CATEGORY_ICON[cat] || Sparkles;
+            const active = activeCategory === cat;
+            return (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.categoryChip,
+                  { backgroundColor: themeColors.chipBg, borderColor: themeColors.chipBorder },
+                  active && styles.categoryChipActive,
+                ]}
+                onPress={() => setActiveCategory(cat)}
+                activeOpacity={0.7}
+              >
+                <Icon size={14} color={active ? '#FFFFFF' : themeColors.textSecondary} />
+                <Text style={[styles.categoryChipText, { color: themeColors.textSecondary }, active && styles.categoryChipTextActive]}>
+                  {blogData.categories[cat] || cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* FEATURED STORY */}
+      {featured && (
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={[styles.featuredCard, { backgroundColor: themeColors.card, borderColor: isDark ? 'rgba(255,0,0,0.3)' : '#FCA5A5' }]}
+            activeOpacity={0.85}
+            onPress={() => openReader(featured)}
+          >
+            {featured.image ? (
+              <Image
+                source={{ uri: resolveImageUrl(featured.image) }}
+                style={styles.featuredCoverImage}
+                resizeMode="cover"
+              />
+            ) : null}
+
+            <View style={styles.featuredHeader}>
+              <View style={styles.featuredTag}>
+                <Text style={styles.featuredTagText}>{blogData.featuredBadge}</Text>
+              </View>
+              <Text style={styles.featuredCategoryText}>{blogData.categories[featured.category] || translatePressContent(featured.category, language as any) || featured.category}</Text>
+            </View>
+
+            <Text style={[styles.featuredTitle, { color: themeColors.textPrimary }]}>{translatePressContent(featured.title, language as any)}</Text>
+            <Text style={[styles.featuredExcerpt, { color: themeColors.textSecondary }]}>{translatePressContent(featured.excerpt, language as any)}</Text>
+
+            <View style={styles.featuredMetaRow}>
+              <View style={styles.metaItem}>
+                <Clock size={12} color={themeColors.textSecondary} />
+                <Text style={[styles.metaText, { color: themeColors.textSecondary }]}>{formatReadTime(featured.readTime, language)}</Text>
+              </View>
+              <Text style={[styles.metaText, { color: themeColors.textSecondary }]}>•</Text>
+              <Text style={[styles.metaText, { color: themeColors.textSecondary }]}>{featured.date}</Text>
+              <View style={{ flex: 1 }} />
+              <View style={styles.readLink}>
+                <Text style={styles.readLinkText}>{blogData.readStoryBtn}</Text>
+                <ArrowRight size={12} color={BRAND_RED} />
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* LATEST ARTICLES */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeadingRow}>
+          <View style={styles.headingBar} />
+          <Text style={[styles.sectionHeadingText, { color: themeColors.textPrimary }]}>{blogData.latestStoriesTitle}</Text>
+        </View>
+
+        {filteredArticles.length === 0 ? (
+          <View style={[styles.emptyCard, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+            <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>{blogData.noArticlesFound}</Text>
+          </View>
+        ) : (
+          <View style={{ gap: Spacing.md }}>
+            {filteredArticles.map((article) => {
+              const Icon = CATEGORY_ICON[article.category] || Newspaper;
+              return (
+                <TouchableOpacity
+                  key={article.id}
+                  style={[styles.articleCard, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}
+                  activeOpacity={0.8}
+                  onPress={() => openReader(article)}
+                >
+                  {article.image ? (
+                    <Image
+                      source={{ uri: resolveImageUrl(article.image) }}
+                      style={styles.articleThumbImage}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+
+                  <View style={styles.articleHeader}>
+                    <View style={styles.articleTagRow}>
+                      <Icon size={12} color={BRAND_RED} />
+                      <Text style={styles.articleCategory}>{blogData.categories[article.category] || translatePressContent(article.category, language as any) || article.category}</Text>
+                    </View>
+                    <View style={styles.metaItem}>
+                      <Clock size={11} color={themeColors.textSecondary} />
+                      <Text style={[styles.metaTextSmall, { color: themeColors.textSecondary }]}>{formatReadTime(article.readTime, language)}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.articleTitle, { color: themeColors.textPrimary }]}>{translatePressContent(article.title, language as any)}</Text>
+                  <Text style={[styles.articleExcerpt, { color: themeColors.textSecondary }]} numberOfLines={2}>
+                    {translatePressContent(article.excerpt, language as any)}
+                  </Text>
+
+                  <View style={styles.articleFooter}>
+                    <Text style={[styles.metaTextSmall, { color: themeColors.textSecondary }]}>{article.date}</Text>
+                    <View style={styles.readLink}>
+                      <Text style={styles.readLinkTextSmall}>{blogData.readBtn}</Text>
+                      <ArrowRight size={11} color={BRAND_RED} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </View>
+
+      {/* REMISE UPDATES STRIP */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeadingRow}>
+          <View style={styles.headingBar} />
+          <Text style={[styles.sectionHeadingText, { color: themeColors.textPrimary }]}>{blogData.remiseUpdatesTitle}</Text>
+        </View>
+
+        <View style={[styles.updatesCard, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+          {updates.map((u, i) => {
+            const Icon = u.icon || Bell;
+            return (
+              <View
+                key={i}
+                style={[
+                  styles.updateItem,
+                  i < updates.length - 1 && [styles.updateItemBorder, { borderBottomColor: themeColors.border }],
+                ]}
+              >
+                <View style={styles.updateIconCircle}>
+                  <Icon size={16} color={BRAND_RED} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.updateTag}>{translatePressContent(u.tag, language as any)}</Text>
+                  <Text style={[styles.updateText, { color: themeColors.textPrimary }]}>{translatePressContent(u.text, language as any)}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* SMART SHOPPING HIGHLIGHT */}
+      <View style={styles.section}>
+        <View style={[styles.highlightCard, { backgroundColor: themeColors.card, borderColor: isDark ? 'rgba(255,0,0,0.35)' : '#FCA5A5' }]}>
+          <View style={styles.highlightHeader}>
+            <Lightbulb size={16} color={BRAND_RED} />
+            <Text style={styles.highlightTag}>{blogData.smartShoppingTitle || "Smart Shopping Tips"}</Text>
+          </View>
+          <Text style={[styles.highlightTitle, { color: themeColors.textPrimary }]}>{translatePressContent("How to Compare Prices Before You Buy", language as any)}</Text>
+          <Text style={[styles.highlightDesc, { color: themeColors.textSecondary }]}>
+            {translatePressContent("Five practical habits that make it easier to spot a genuinely good deal nearby.", language as any)}
+          </Text>
+        </View>
+      </View>
+
+      {/* FOR LOCAL BUSINESSES */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeadingRow}>
+          <View style={styles.headingBar} />
+          <Text style={[styles.sectionHeadingText, { color: themeColors.textPrimary }]}>{blogData.forBusinessesTitle || "For Local Businesses"}</Text>
+        </View>
+
+        <View style={{ gap: Spacing.sm }}>
+          {BUSINESS_TOPICS.map((topic, i) => {
+            const Icon = topic.icon;
+            return (
+              <View key={i} style={[styles.businessCard, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+                <View style={styles.iconCircle}>
+                  <Icon size={18} color={BRAND_RED} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.businessTitle, { color: themeColors.textPrimary }]}>{translatePressContent(topic.title, language as any)}</Text>
+                  <Text style={[styles.businessDesc, { color: themeColors.textSecondary }]}>{translatePressContent(topic.desc, language as any)}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+
+
+      {/* ARTICLE READER MODAL */}
+      <Modal
+        visible={readerModalVisible}
+        animationType="slide"
+        onRequestClose={() => setReaderModalVisible(false)}
+      >
+        <View style={[styles.readerModal, { backgroundColor: themeColors.bg }]}>
+          <View style={[styles.readerHeader, { borderBottomColor: themeColors.border, backgroundColor: themeColors.card }]}>
+            <TouchableOpacity
+              style={styles.readerCloseBtn}
+              onPress={() => setReaderModalVisible(false)}
+            >
+              <X size={20} color={themeColors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={styles.readerHeaderCategory}>
+              {selectedArticle?.category ? (blogData.categories[selectedArticle.category] || translatePressContent(selectedArticle.category, language as any) || selectedArticle.category) : 'Article'}
+            </Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          {selectedArticle && (
+            <ScrollView
+              style={styles.readerBody}
+              contentContainerStyle={{ paddingBottom: 60 }}
+            >
+              <View style={styles.readerTagRow}>
+                <Text style={styles.readerCategoryTag}>{blogData.categories[selectedArticle.category] || translatePressContent(selectedArticle.category, language as any) || selectedArticle.category}</Text>
+                <Text style={styles.readerDot}>•</Text>
+                <Text style={[styles.readerMetaText, { color: themeColors.textSecondary }]}>{formatReadTime(selectedArticle.readTime, language)}</Text>
+                <Text style={styles.readerDot}>•</Text>
+                <Text style={[styles.readerMetaText, { color: themeColors.textSecondary }]}>{translateDate(selectedArticle.date, language as any)}</Text>
+              </View>
+
+              <Text style={[styles.readerTitle, { color: themeColors.textPrimary }]}>{translatePressContent(selectedArticle.title, language as any)}</Text>
+              <Text style={[styles.readerExcerpt, { color: themeColors.textSecondary }]}>{translatePressContent(selectedArticle.excerpt, language as any)}</Text>
+
+              <View style={styles.readerAuthorRow}>
+                <User size={13} color={themeColors.textSecondary} />
+                <Text style={[styles.readerAuthorText, { color: themeColors.textSecondary }]}>
+                  {blogData.byAuthor || 'By'} {translatePressContent(selectedArticle.author, language as any) || selectedArticle.author || 'Team Remise'}
+                </Text>
+              </View>
+
+              {selectedArticle.image ? (
+                <Image
+                  source={{ uri: resolveImageUrl(selectedArticle.image) }}
+                  style={[styles.readerCoverImage, { backgroundColor: themeColors.card }]}
+                  resizeMode="cover"
+                />
+              ) : null}
+
+              <View style={styles.readerParagraphs}>
+                {(selectedArticle.body && selectedArticle.body.length > 0
+                  ? selectedArticle.body
+                  : [selectedArticle.excerpt]
+                ).map((para, i) => (
+                  <Text key={i} style={[styles.readerParagraph, { color: themeColors.textPrimary }]}>
+                    {translatePressContent(para, language as any)}
+                  </Text>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+
+      <AuthRequiredModal
+        visible={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        title="Login to Subscribe"
+        subtitle="Please sign in or register to subscribe to the newsletter."
+        onLogin={() => navigation.navigate('LoginRegister')}
+      />
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+
+  hero: { padding: Spacing.lg, paddingTop: Spacing.xl },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(255,0,0,0.35)',
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    marginBottom: Spacing.md,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: BRAND_RED,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  heroTitle: {
+    fontSize: FontSizes.xl ?? 26,
+    fontWeight: '900',
+    marginBottom: Spacing.sm,
+    lineHeight: 32,
+  },
+  heroSubtitle: { fontSize: FontSizes.sm, lineHeight: 21, marginBottom: Spacing.md },
+
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    padding: 0,
+  },
+
+  categoryScrollWrapper: { marginTop: Spacing.xs, marginBottom: Spacing.sm },
+  categoryList: { paddingHorizontal: Spacing.md, gap: Spacing.xs },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.pill,
+    borderWidth: 1,
+  },
+  categoryChipActive: {
+    backgroundColor: BRAND_RED,
+    borderColor: BRAND_RED,
+  },
+  categoryChipText: {
+    fontSize: FontSizes.xs,
+    fontWeight: '700',
+  },
+  categoryChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+
+  section: { paddingHorizontal: Spacing.md, marginTop: Spacing.xl },
+  sectionHeadingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md },
+  headingBar: { width: 4, height: 18, borderRadius: 2, backgroundColor: BRAND_RED },
+  sectionHeadingText: { fontSize: FontSizes.base, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  featuredCard: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+  },
+  featuredCoverImage: {
+    width: '100%',
+    height: 170,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+  },
+  featuredHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
+  featuredTag: {
+    backgroundColor: 'rgba(255,0,0,0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+  },
+  featuredTagText: { fontSize: 10, fontWeight: '800', color: BRAND_RED, letterSpacing: 0.5 },
+  featuredCategoryText: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 },
+  featuredTitle: { fontSize: FontSizes.lg, fontWeight: '900', marginBottom: Spacing.xs, lineHeight: 24 },
+  featuredExcerpt: { fontSize: FontSizes.sm, lineHeight: 20, marginBottom: Spacing.md },
+  featuredMetaRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaText: { fontSize: FontSizes.xs },
+  metaTextSmall: { fontSize: 11 },
+  readLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  readLinkText: { fontSize: 11, fontWeight: '800', color: BRAND_RED, textTransform: 'uppercase' },
+  readLinkTextSmall: { fontSize: 10, fontWeight: '800', color: BRAND_RED, textTransform: 'uppercase' },
+
+  emptyCard: {
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    padding: Spacing.lg,
+    alignItems: 'center',
+  },
+  emptyText: { fontSize: FontSizes.sm },
+
+  articleCard: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+  },
+  articleThumbImage: {
+    width: '100%',
+    height: 130,
+    borderRadius: BorderRadius.sm,
+    marginBottom: Spacing.sm,
+  },
+  articleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  articleTagRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  articleCategory: { fontSize: 10, fontWeight: '800', color: BRAND_RED, textTransform: 'uppercase', letterSpacing: 0.5 },
+  articleTitle: { fontSize: FontSizes.sm, fontWeight: '800', marginBottom: 4, lineHeight: 20 },
+  articleExcerpt: { fontSize: FontSizes.xs, lineHeight: 17, marginBottom: Spacing.sm },
+  articleFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+
+  updatesCard: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+  },
+  updateItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.sm },
+  updateItemBorder: { borderBottomWidth: 1 },
+  updateIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,0,0,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  updateTag: { fontSize: 10, fontWeight: '800', color: BRAND_RED, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  updateText: { fontSize: FontSizes.xs, fontWeight: '500' },
+
+  highlightCard: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+  },
+  highlightHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.xs },
+  highlightTag: { fontSize: 10, fontWeight: '800', color: BRAND_RED, textTransform: 'uppercase', letterSpacing: 0.5 },
+  highlightTitle: { fontSize: FontSizes.base, fontWeight: '900', marginBottom: Spacing.xs },
+  highlightDesc: { fontSize: FontSizes.xs, lineHeight: 18 },
+
+  businessCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+  },
+  iconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,0,0,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  businessTitle: { fontSize: FontSizes.sm, fontWeight: '800', marginBottom: 2 },
+  businessDesc: { fontSize: FontSizes.xs, lineHeight: 16 },
+
+  newsletterCard: {
+    margin: Spacing.md,
+    marginTop: Spacing.xl,
+    borderWidth: 1,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    alignItems: 'center',
+  },
+  newsletterTitle: { fontSize: FontSizes.base, fontWeight: '800', textAlign: 'center', marginBottom: Spacing.xs },
+  newsletterSubtitle: { fontSize: FontSizes.xs, textAlign: 'center', lineHeight: 18, marginBottom: Spacing.lg },
+  subscribeRow: { flexDirection: 'row', width: '100%', gap: Spacing.sm },
+  subscribeInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    fontSize: FontSizes.xs,
+  },
+  subscribeBtn: {
+    backgroundColor: BRAND_RED,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscribeBtnText: { fontSize: FontSizes.xs, fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.5 },
+  subscribedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: 'rgba(34,197,94,0.1)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.3)',
+  },
+  subscribedText: { fontSize: FontSizes.xs, fontWeight: '700', color: '#22C55E' },
+
+  // Reader Modal Styles
+  readerModal: { flex: 1 },
+  readerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+  },
+  readerCloseBtn: { padding: 4 },
+  readerHeaderCategory: { fontSize: FontSizes.xs, fontWeight: '800', color: BRAND_RED, textTransform: 'uppercase' },
+  readerBody: { padding: Spacing.lg },
+  readerTagRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.sm },
+  readerCategoryTag: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: BRAND_RED,
+    textTransform: 'uppercase',
+    backgroundColor: 'rgba(255,0,0,0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+  },
+  readerDot: { color: '#64748B', fontSize: 10 },
+  readerMetaText: { fontSize: 11, fontWeight: '600' },
+  readerTitle: { fontSize: FontSizes.xl, fontWeight: '900', marginBottom: Spacing.sm, lineHeight: 28 },
+  readerExcerpt: { fontSize: FontSizes.sm, lineHeight: 21, marginBottom: Spacing.md },
+  readerAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.lg },
+  readerAuthorText: { fontSize: 11, fontWeight: '700' },
+  readerCoverImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.lg,
+  },
+  readerParagraphs: { gap: Spacing.md },
+  readerParagraph: { fontSize: FontSizes.sm, lineHeight: 23 },
+});

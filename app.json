@@ -1,0 +1,9 @@
+{
+  "name": "RemiseBusinessApp",
+  "displayName": "Remise Business",
+  "extra": {
+    "eas": {
+      "projectId": "498d307f-c993-49f3-b2b0-d5280b1473d5"
+    }
+  }
+}
