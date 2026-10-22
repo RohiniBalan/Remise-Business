@@ -50,6 +50,7 @@ import {
 } from '../../utils/categoryAttributes';
 import { AVAILABILITY_OPTIONS, STOCK_UNIT_OPTIONS } from '../../utils/productForm';
 import { guessCategory, buildGeneratedImageUrl } from '../../api/geminiScanApi';
+import ImageCropModal, { CroppedImageResult } from '../../components/common/ImageCropModal';
 
 export interface ProductImageItem {
   id: string;
@@ -112,14 +113,24 @@ export default function StoreProductFormScreen() {
   // Multi-image state
   const [images, setImages] = useState<ProductImageItem[]>(() => {
     const initialList: ProductImageItem[] = [];
+
+    // If a 1:1 cropped square image asset was passed from scanning, prioritize it as the primary asset
+    if (scanned?.croppedAsset?.uri) {
+      initialList.push({
+        id: `scanned-cropped-${Date.now()}`,
+        uri: scanned.croppedAsset.uri,
+        asset: scanned.croppedAsset,
+      });
+    }
+
     const rawList: string[] =
       Array.isArray(product?.images) && product.images.length > 0
         ? product.images
         : product?.imageUrl
           ? [product.imageUrl]
-          : Array.isArray(scanned?.images) && scanned.images.length > 0
+          : !scanned?.croppedAsset?.uri && Array.isArray(scanned?.images) && scanned.images.length > 0
             ? scanned.images
-            : scanned?.imageUrl
+            : !scanned?.croppedAsset?.uri && scanned?.imageUrl
               ? [scanned.imageUrl]
               : [];
 
@@ -135,6 +146,18 @@ export default function StoreProductFormScreen() {
     return initialList;
   });
   const [newImageUrl, setNewImageUrl] = useState('');
+
+  // Square cropping state
+  const [cropTarget, setCropTarget] = useState<{
+    uri: string;
+    base64?: string;
+    width?: number;
+    height?: number;
+    type?: string;
+    fromCamera?: boolean;
+    autoScan?: boolean;
+  } | null>(null);
+  const [showCropModal, setShowCropModal] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -456,22 +479,51 @@ export default function StoreProductFormScreen() {
       if (!granted) return;
     }
     const res = fromCamera
-      ? await launchCamera({ mediaType: 'photo', quality: 0.8, maxWidth: 1600, maxHeight: 1600 })
-      : await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 0, maxWidth: 1600, maxHeight: 1600 });
+      ? await launchCamera({ mediaType: 'photo', quality: 0.9, maxWidth: 1600, maxHeight: 1600, includeBase64: true, saveToPhotos: false })
+      : await launchImageLibrary({ mediaType: 'photo', quality: 0.9, selectionLimit: 1, maxWidth: 1600, maxHeight: 1600, includeBase64: true });
     if (res.didCancel || res.errorCode) return;
-    const assets = res.assets || [];
-    if (assets.length > 0) {
-      if (autoScan) {
-        handleAiAutoFill(assets[0]);
-      } else {
-        const newItems: ProductImageItem[] = assets.map((asset, i) => ({
-          id: `asset-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
-          uri: asset.uri || '',
-          asset,
-        }));
-        setImages(prev => [...newItems, ...prev]);
-      }
+    const asset = res.assets?.[0];
+    if (asset?.uri) {
+      setCropTarget({
+        uri: asset.uri,
+        base64: asset.base64,
+        width: asset.width,
+        height: asset.height,
+        type: asset.type || 'image/jpeg',
+        fromCamera,
+        autoScan,
+      });
+      setShowCropModal(true);
     }
+  };
+
+  const handleCropConfirm = (cropped: CroppedImageResult) => {
+    setShowCropModal(false);
+    const newCroppedItem: ProductImageItem = {
+      id: `cropped-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      uri: cropped.uri,
+      asset: {
+        uri: cropped.uri,
+        fileName: cropped.fileName,
+        type: cropped.type,
+        width: cropped.width,
+        height: cropped.height,
+      } as Asset,
+    };
+    setImages(prev => [newCroppedItem, ...prev]);
+
+    if (cropTarget?.autoScan) {
+      handleAiAutoFill(newCroppedItem.asset);
+    }
+    setCropTarget(null);
+  };
+
+  const handleRetakeCrop = () => {
+    const fromCam = cropTarget?.fromCamera;
+    const autoScan = cropTarget?.autoScan;
+    setShowCropModal(false);
+    setCropTarget(null);
+    pickImage(!!fromCam, !!autoScan);
   };
 
   const handleAddUrl = () => {
@@ -1177,6 +1229,21 @@ export default function StoreProductFormScreen() {
           </View>
         </View>
       </Modal>
+
+      <ImageCropModal
+        visible={showCropModal}
+        imageUri={cropTarget?.uri || null}
+        imageBase64={cropTarget?.base64}
+        imageWidth={cropTarget?.width}
+        imageHeight={cropTarget?.height}
+        title="Crop Product Photo"
+        onConfirm={handleCropConfirm}
+        onCancel={() => {
+          setShowCropModal(false);
+          setCropTarget(null);
+        }}
+        onRetake={handleRetakeCrop}
+      />
     </ScrollView>
   );
 }
