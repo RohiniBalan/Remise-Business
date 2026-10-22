@@ -180,6 +180,24 @@ export default function StoreOrdersScreen() {
     );
   };
 
+  const handleSetPaymentPreference = async (o: any, pref: 'CASH' | 'ONLINE') => {
+    const orderId = o.orderId || o._id;
+    setUpdating(o._id);
+    try {
+      const res = await smartOrderApi.setPaymentPreference(orderId, pref);
+      if (res.data?.success) {
+        o.paymentPreference = pref;
+        refresh();
+      } else {
+        setErrorModal(res.data?.message || 'Failed to update payment preference');
+      }
+    } catch (err: any) {
+      setErrorModal(err?.response?.data?.message || err?.message || 'Failed to update payment preference');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   const handleShowStoreQr = async (o: any) => {
     const oid = o.orderId || o._id;
     setLoadingQrId(oid);
@@ -389,6 +407,42 @@ export default function StoreOrdersScreen() {
                     </Text>
                   </View>
                 ) : null}
+                {(o.paymentMethod === 'cod' || o.paymentMethod === 'cash') && (
+                  <View style={[
+                    styles.metaChip,
+                    (o.paymentStatus === 'SUCCESS' || o.codDetails?.status === 'collected')
+                      ? { backgroundColor: isDark ? '#064e3b' : '#ECFDF5', borderColor: '#A7F3D0' }
+                      : o.paymentPreference === 'ONLINE'
+                      ? { backgroundColor: isDark ? '#1e3a8a' : '#EFF6FF', borderColor: '#BFDBFE' }
+                      : o.paymentPreference === 'CASH'
+                      ? { backgroundColor: isDark ? '#78350f' : '#FEF3C7', borderColor: '#FDE68A' }
+                      : { backgroundColor: isDark ? '#374151' : '#F3F4F6' }
+                  ]}>
+                    <Text style={[
+                      styles.metaChipText,
+                      {
+                        fontWeight: '700',
+                        color: (o.paymentStatus === 'SUCCESS' || o.codDetails?.status === 'collected')
+                          ? '#10B981'
+                          : o.paymentPreference === 'ONLINE'
+                          ? '#2563EB'
+                          : o.paymentPreference === 'CASH'
+                          ? '#D97706'
+                          : (isDark ? '#9CA3AF' : '#6B7280')
+                      }
+                    ]}>
+                      {o.paymentStatus === 'SUCCESS'
+                        ? 'Paid Online (Verified)'
+                        : o.codDetails?.status === 'collected'
+                        ? 'Cash Collected'
+                        : o.paymentPreference === 'ONLINE'
+                        ? 'Pref: Online'
+                        : o.paymentPreference === 'CASH'
+                        ? 'Pref: Cash'
+                        : 'Choice Pending'}
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -432,19 +486,29 @@ export default function StoreOrdersScreen() {
 
               {/* Action Buttons Row */}
               <View style={styles.actionButtonsRow}>
-                {o.paymentMethod === 'cod' && (o.codDetails?.status === 'pending' || (!o.codDetails?.status && o.paymentStatus !== 'SUCCESS')) && (
-                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <TouchableOpacity
-                      style={styles.codCollectBtn}
-                      disabled={updating === o._id}
-                      onPress={() => handleConfirmCod(o)}
-                    >
-                      <Banknote size={12} color="#FFFFFF" />
-                      <Text style={styles.codCollectBtnText}>Confirm Cash (₹{o.totalAmount})</Text>
-                    </TouchableOpacity>
+                {(o.paymentMethod === 'cod' || o.paymentMethod === 'cash') && (
+                  o.paymentStatus === 'SUCCESS' ? (
+                    <View style={[styles.codCollectBtn, { backgroundColor: '#10B981' }]}>
+                      <CheckCircle2 size={12} color="#FFFFFF" />
+                      <Text style={styles.codCollectBtnText}>Paid Online (Verified)</Text>
+                    </View>
+                  ) : o.codDetails?.status === 'collected' ? (
+                    <View style={[styles.codCollectBtn, { backgroundColor: '#059669' }]}>
+                      <CheckCircle2 size={12} color="#FFFFFF" />
+                      <Text style={styles.codCollectBtnText}>Cash Collected</Text>
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <TouchableOpacity
+                        style={styles.codCollectBtn}
+                        disabled={updating === o._id}
+                        onPress={() => handleConfirmCod(o)}
+                      >
+                        <Banknote size={12} color="#FFFFFF" />
+                        <Text style={styles.codCollectBtnText}>Confirm Cash (₹{o.totalAmount})</Text>
+                      </TouchableOpacity>
 
-                    {/* Show QR Online Payment button for Self Pickup COD orders */}
-                    {o.deliveryMethod === 'pickup' && (
+                      {/* Show QR Online Payment button */}
                       <TouchableOpacity
                         style={styles.storeQrBtn}
                         disabled={loadingQrId === (o.orderId || o._id)}
@@ -459,8 +523,44 @@ export default function StoreOrdersScreen() {
                           </>
                         )}
                       </TouchableOpacity>
-                    )}
-                  </View>
+
+                      {/* Payment Choice Preference Switches */}
+                      {o.paymentPreference === 'CASH' ? (
+                        <TouchableOpacity
+                          style={[styles.storeQrBtn, { backgroundColor: isDark ? '#1e3a8a' : '#EFF6FF', borderWidth: 1, borderColor: '#3B82F6' }]}
+                          disabled={updating === o._id}
+                          onPress={() => handleSetPaymentPreference(o, 'ONLINE')}
+                        >
+                          <Text style={[styles.storeQrBtnText, { color: '#2563EB' }]}>Switch to Online</Text>
+                        </TouchableOpacity>
+                      ) : o.paymentPreference === 'ONLINE' ? (
+                        <TouchableOpacity
+                          style={[styles.storeQrBtn, { backgroundColor: isDark ? '#78350f' : '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B' }]}
+                          disabled={updating === o._id}
+                          onPress={() => handleSetPaymentPreference(o, 'CASH')}
+                        >
+                          <Text style={[styles.storeQrBtnText, { color: '#D97706' }]}>Switch to Cash</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                          <TouchableOpacity
+                            style={[styles.storeQrBtn, { backgroundColor: isDark ? '#78350f' : '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', paddingHorizontal: 6 }]}
+                            disabled={updating === o._id}
+                            onPress={() => handleSetPaymentPreference(o, 'CASH')}
+                          >
+                            <Text style={[styles.storeQrBtnText, { color: '#D97706', fontSize: 9 }]}>Pref: Cash</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.storeQrBtn, { backgroundColor: isDark ? '#1e3a8a' : '#EFF6FF', borderWidth: 1, borderColor: '#3B82F6', paddingHorizontal: 6 }]}
+                            disabled={updating === o._id}
+                            onPress={() => handleSetPaymentPreference(o, 'ONLINE')}
+                          >
+                            <Text style={[styles.storeQrBtnText, { color: '#2563EB', fontSize: 9 }]}>Pref: Online</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  )
                 )}
 
                 {/* Self Pickup OTP Confirmation Section — Only for eligible, not-yet-delivered Self Pickup orders */}

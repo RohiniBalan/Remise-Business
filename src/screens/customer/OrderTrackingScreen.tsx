@@ -345,6 +345,30 @@ export default function OrderTrackingScreen() {
             </View>
           )}
 
+          {/* Return Handover OTP Card */}
+          {Boolean(
+            order?.returnOtp &&
+              !order?.isReturnOtpVerified
+          ) && (
+            <View style={[styles.otpBannerCard, { borderColor: '#F59E0B' }]}>
+              <View style={styles.otpBannerHeader}>
+                <View style={[styles.otpIconWrap, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                  <RotateCcw size={22} color="#D97706" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.otpBannerBadge, { color: '#D97706' }]}>RETURN HANDOVER OTP</Text>
+                  <Text style={styles.otpBannerTitle}>Please share code {order.returnOtp} with delivery agent after verifying the package.</Text>
+                  <Text style={styles.otpBannerSub}>
+                    Provide this 6-digit code upon handing over your return items to the delivery agent.
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.otpCodeContainer, { backgroundColor: '#D97706' }]}>
+                <Text style={styles.otpCodeText}>{order.returnOtp}</Text>
+              </View>
+            </View>
+          )}
+
           {/* Post-Fulfillment Store Review Prompt */}
           {isEligibleForReview && !reviewSubmitted && (
             <View style={styles.reviewPromptCard}>

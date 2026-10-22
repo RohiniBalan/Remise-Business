@@ -611,7 +611,7 @@ export default function DeliveryPartnerDashboardScreen() {
               onPress={toggleTheme}
               accessibilityLabel="Toggle Light/Dark Theme"
             >
-              {isDark ? <Sun size={17} color="#F59E0B" /> : <Moon size={17} color="#6366F1" />}
+              {isDark ? <Sun size={17} color={CustomerColors.primary} /> : <Moon size={17} color="#6366F1" />}
             </TouchableOpacity>
 
             <TouchableOpacity

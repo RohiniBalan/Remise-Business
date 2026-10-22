@@ -180,7 +180,7 @@ export default function BusinessSignupScreen() {
         <View style={styles.form}>
           {/* Owner / Merchant Name */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Business / Owner Name</Text>
+            <Text style={styles.label}>Owner Name</Text>
             <TextInput
               style={[styles.input, !!fieldErrors.fullname && styles.inputError]}
               placeholder="e.g. John Doe / Green Supermarket"

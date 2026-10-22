@@ -889,9 +889,31 @@ export default function DeliveryFlowModal({
                       {tDeliv.milestone} {translateMilestone(currentStatus)}
                     </Text>
                     <Text style={styles.driverEtaText}>
-                      {tDeliv.eta} {driver.eta || '15 mins'}
+                      {tDeliv.eta} {order.shadowfaxDetails?.pickupEta || driver.eta || '15 mins'}
                     </Text>
                   </View>
+
+                  {order.shadowfaxDetails?.trackUrl ? (
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: '#0D9488',
+                        paddingVertical: 10,
+                        paddingHorizontal: 16,
+                        borderRadius: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        marginTop: 10,
+                      }}
+                      onPress={() => Linking.openURL(order.shadowfaxDetails.trackUrl)}
+                    >
+                      <ExternalLink size={14} color="#FFFFFF" />
+                      <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 13 }}>
+                        Live Shadowfax Tracking
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 {/* Milestone Stepper */}

@@ -335,6 +335,36 @@ export default function OrderDetailScreen() {
             )}
           </View>
 
+          {/* Customer Return Verification OTP Card */}
+          {Boolean(
+            order?.returnOtp &&
+              !order?.isReturnOtpVerified
+          ) && (
+            <View style={[styles.card, { borderColor: '#F59E0B', borderWidth: 1.5, backgroundColor: isDark ? 'rgba(245, 158, 11, 0.08)' : '#FFFBEB' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#D97706', alignItems: 'center', justifyContent: 'center' }}>
+                  <RotateCcw size={22} color="#FFFFFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#D97706', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                    RETURN PACKAGE VERIFICATION
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#F3F4F6' : '#111827', marginTop: 2 }}>
+                    Please share code {order.returnOtp} with delivery agent after verifying the package.
+                  </Text>
+                  <Text style={{ fontSize: 11, color: isDark ? '#9CA3AF' : '#6B7280', marginTop: 2 }}>
+                    Provide this 6-digit code upon handing over your return items.
+                  </Text>
+                </View>
+                <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: '#D97706' }}>
+                  <Text style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: '900', color: '#FFFFFF', letterSpacing: 2 }}>
+                    {order.returnOtp}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* Quick Action Buttons */}
           <View style={styles.actionGrid}>
             {/* Live Track */}
