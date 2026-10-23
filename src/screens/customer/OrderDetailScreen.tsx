@@ -67,6 +67,7 @@ export default function OrderDetailScreen() {
   const [selectedRefund, setSelectedRefund] = useState<{
     orderId: string;
     totalAmount: number;
+    order?: any;
   } | null>(null);
   const [selectedReviewOrder, setSelectedReviewOrder] = useState<any | null>(null);
   const [refundError, setRefundError] = useState('');
@@ -434,6 +435,7 @@ export default function OrderDetailScreen() {
                   setSelectedRefund({
                     orderId: order.orderId || order._id,
                     totalAmount,
+                    order,
                   });
                 }}
               >
@@ -673,6 +675,7 @@ export default function OrderDetailScreen() {
       {Boolean(selectedRefund) && (
         <RefundModal
           visible={Boolean(selectedRefund)}
+          order={selectedRefund?.order || order}
           totalAmount={selectedRefund!.totalAmount}
           isSubmitting={isRefunding}
           error={refundError}

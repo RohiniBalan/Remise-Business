@@ -36,7 +36,6 @@ import {
 import { smartOrderApi } from '../../api/smartOrderApi';
 import { useTheme } from '../../context/ThemeContext';
 import { CustomerColors, Spacing, FontSizes, BorderRadius, Shadows } from '../../styles/theme';
-import LiveDeliveryTrackingMap from '../../components/common/LiveDeliveryTrackingMap';
 import StoreReviewModal from '../../components/common/StoreReviewModal';
 import { useTranslation, translateProductName, getSupplierTranslations } from '../../i18n';
 
@@ -400,20 +399,6 @@ export default function OrderTrackingScreen() {
             </View>
           )}
 
-          {/* Real-time Live GPS Tracking Map */}
-          {!isRefundedOrCancelled ? (
-            <LiveDeliveryTrackingMap
-              orderId={orderId}
-              deliveryStatus={currentStatus}
-              driver={driver}
-              storeName={order?.store?.name || order?.storeName}
-              storeAddress={order?.store?.address || 'Store Location'}
-              customerName={order?.customerName}
-              customerAddress={order?.deliveryAddress?.fullAddress || 'Customer Address'}
-              isStoreOwner={false}
-              isDark={isDark}
-            />
-          ) : null}
 
           {/* Stepper Milestone List */}
           <View style={styles.card}>
