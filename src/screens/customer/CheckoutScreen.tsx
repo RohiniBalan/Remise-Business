@@ -141,14 +141,27 @@ export default function CheckoutScreen() {
     );
   }, [user?.role, storeDetails, itemsToCheckout]);
 
+  const isHomeBusinessOrder = useMemo(() => {
+    const sType = storeDetails?.storeType || storeDetails?.role;
+    if (sType === 'home_business') {
+      return true;
+    }
+    return (itemsToCheckout as any[]).some(
+      (item: any) =>
+        item.ownerRole === 'home_business' ||
+        item.supplierRole === 'home_business' ||
+        item.storeType === 'home_business'
+    );
+  }, [storeDetails, itemsToCheckout]);
+
   useEffect(() => {
-    if (isStockOrder) {
+    if (isStockOrder || isHomeBusinessOrder) {
       setDeliveryMethod('delivery');
       if (paymentMethod !== 'razorpay') {
         setPaymentMethod('razorpay');
       }
     }
-  }, [isStockOrder, paymentMethod]);
+  }, [isStockOrder, isHomeBusinessOrder, paymentMethod]);
 
   const subtotal = useMemo(
     () => itemsToCheckout.reduce((sum, i) => sum + i.price * i.quantity, 0),
@@ -299,16 +312,20 @@ export default function CheckoutScreen() {
           quantity: i.quantity,
           image: i.image ?? null,
           storeId: (i as any).storeId || primaryStoreId || creditEligibility?.storeId || null,
+          ownerRole: (i as any).ownerRole,
+          storeType: (i as any).storeType,
+          supplierRole: (i as any).supplierRole,
+          isOffer: Boolean((i as any).isOffer),
         })),
         contactEmail,
         shippingAddress,
         billingAddress: billingSameAsShipping
           ? shippingAddress
           : billingAddress,
-        deliveryMethod: isStockOrder ? 'delivery' : deliveryMethod,
-        paymentMethod: isStockOrder ? 'razorpay' : paymentMethod,
+        deliveryMethod: (isStockOrder || isHomeBusinessOrder) ? 'delivery' : deliveryMethod,
+        paymentMethod: (isStockOrder || isHomeBusinessOrder) ? 'razorpay' : paymentMethod,
         buyerRole: user?.role || 'user',
-        supplierRole: storeDetails?.storeType || storeDetails?.role || (isStockOrder ? 'whole_saler' : 'store_owner'),
+        supplierRole: storeDetails?.storeType || storeDetails?.role || (isHomeBusinessOrder ? 'home_business' : (isStockOrder ? 'whole_saler' : 'store_owner')),
         storeId: primaryStoreId || creditEligibility?.storeId || null,
         storeName: primaryStoreName !== 'Vendor Store' ? primaryStoreName : (creditEligibility?.storeName || 'Vendor Store'),
       });
@@ -974,7 +991,7 @@ export default function CheckoutScreen() {
                     </Text>
                   </View>
                 </TouchableOpacity>
-                {!isStockOrder && (
+                {!isStockOrder && !isHomeBusinessOrder && (
                   <TouchableOpacity
                     style={[
                       styles.deliveryMethodOption,
@@ -1012,6 +1029,13 @@ export default function CheckoutScreen() {
                       </Text>
                     </View>
                   </TouchableOpacity>
+                )}
+                {isHomeBusinessOrder && (
+                  <View style={{ marginTop: Spacing.xs, padding: Spacing.sm, backgroundColor: isDark ? 'rgba(13, 148, 136, 0.15)' : '#F0FDFA', borderRadius: 8, borderWidth: 1, borderColor: isDark ? 'rgba(13, 148, 136, 0.3)' : '#CCFBF1' }}>
+                    <Text style={{ fontSize: 12, color: isDark ? '#5EEAD4' : '#0F766E', fontWeight: '500' }}>
+                      ℹ️ Orders from home businesses support only Home Delivery. Self Pickup is not available.
+                    </Text>
+                  </View>
                 )}
               </View>
             </View>
@@ -1339,7 +1363,7 @@ export default function CheckoutScreen() {
               </TouchableOpacity>
 
               {/* 2. Cash on Delivery (COD) Option */}
-              {!isStockOrder && (
+              {!isStockOrder && !isHomeBusinessOrder && (
                 <TouchableOpacity
                 style={[
                   styles.paymentCard,
@@ -1416,7 +1440,7 @@ export default function CheckoutScreen() {
               )}
 
               {/* 3. Store Credit (Kadan) Option */}
-              {!isStockOrder && creditEligibility?.hasAccount && creditEligibility?.status === 'APPROVED' ? (
+              {!isStockOrder && !isHomeBusinessOrder && creditEligibility?.hasAccount && creditEligibility?.status === 'APPROVED' ? (
                 <TouchableOpacity
                   style={[
                     styles.paymentCard,
@@ -1502,6 +1526,44 @@ export default function CheckoutScreen() {
                   />
                 </TouchableOpacity>
               ) : null}
+
+              {isHomeBusinessOrder && (
+                <View
+                  style={{
+                    marginTop: Spacing.sm,
+                    padding: Spacing.md,
+                    backgroundColor: isDark ? 'rgba(13, 148, 136, 0.15)' : '#F0FDFA',
+                    borderRadius: BorderRadius.lg,
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(13, 148, 136, 0.3)' : '#CCFBF1',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: Spacing.sm,
+                  }}
+                >
+                  <ShieldCheck size={20} color={isDark ? '#5EEAD4' : '#0F766E'} />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: isDark ? '#5EEAD4' : '#0F766E',
+                      }}
+                    >
+                      Home Business Checkout Policy
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: isDark ? '#D1D5DB' : '#374151',
+                        marginTop: 2,
+                      }}
+                    >
+                      Products from home businesses are eligible exclusively for Online Payment and Home Delivery. Cash on Delivery is unavailable.
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               {/* Step 3 Action Buttons */}
               <View style={styles.stepBtnRow}>

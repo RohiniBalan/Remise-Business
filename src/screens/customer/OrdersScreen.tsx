@@ -747,28 +747,24 @@ export default function OrdersScreen() {
 
                   {item.paymentStatus === 'SUCCESS' &&
                     (item.paymentMethod?.toLowerCase() === 'razorpay' || isCashPaidOrder(item.order || item)) && (
-                      <>
-                        {(!item.refundWindowEndAt || new Date() < new Date(item.refundWindowEndAt)) ? (
-                          <TouchableOpacity
-                            style={[styles.refundBtn, isDark && { backgroundColor: 'rgba(194, 65, 12, 0.2)', borderColor: '#C2410C' }]}
-                            onPress={() => {
-                              setRefundError('');
-                              setSelectedRefund({
-                                orderId: item.orderId,
-                                totalAmount: item.totalAmount,
-                                order: item.order || item,
-                              });
-                            }}
-                          >
-                            <RotateCcw size={13} color={isDark ? '#FDBA74' : '#C2410C'} />
-                            <Text style={[styles.refundBtnText, isDark && { color: '#FDBA74' }]}>
-                              {item.displayStatus === 'Delivered' || item.deliveryStatus === 'Delivered'
-                                ? t('orders.returnRefund')
-                                : t('orders.cancelOrder')}
-                            </Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </>
+                      <TouchableOpacity
+                        style={[styles.refundBtn, isDark && { backgroundColor: 'rgba(194, 65, 12, 0.2)', borderColor: '#C2410C' }]}
+                        onPress={() => {
+                          setRefundError('');
+                          setSelectedRefund({
+                            orderId: item.orderId,
+                            totalAmount: item.totalAmount,
+                            order: item.order || item,
+                          });
+                        }}
+                      >
+                        <RotateCcw size={13} color={isDark ? '#FDBA74' : '#C2410C'} />
+                        <Text style={[styles.refundBtnText, isDark && { color: '#FDBA74' }]}>
+                          {item.displayStatus === 'Delivered' || item.deliveryStatus === 'Delivered'
+                            ? t('orders.returnRefund')
+                            : t('orders.cancelOrder')}
+                        </Text>
+                      </TouchableOpacity>
                     )}
 
                   {/* RATE YOUR STORE (Available strictly post-fulfillment & verified OTP) */}
