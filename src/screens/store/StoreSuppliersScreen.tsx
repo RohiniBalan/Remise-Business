@@ -41,6 +41,7 @@ import { orderApi } from '../../api/orderApi';
 import { smartOrderApi } from '../../api/smartOrderApi';
 import RefundModal from '../../components/common/RefundModal';
 import InvoiceModal from '../../components/common/InvoiceModal';
+import MaskedCallButton from '../../components/common/MaskedCallButton';
 import { groupByTitle, TitleGroup } from '../../utils/supplierTypes';
 import { mergeCategories } from '../../utils/storeCategories';
 import { resolveImageUrl } from '../../utils/imageUrl';
@@ -469,6 +470,12 @@ export default function StoreSuppliersScreen() {
                       <MapPin size={11} color="#2563EB" />
                       <Text style={styles.trackBtnText}>Track</Text>
                     </TouchableOpacity>
+
+                    <MaskedCallButton
+                      orderId={o.orderId || o._id}
+                      label={o.supplierRole === 'home_business' ? 'Call Home Business' : 'Call Wholesaler'}
+                      color={CustomerColors.teal700}
+                    />
 
                     {(o.paymentStatus === 'SUCCESS' || o.paymentMethod === 'cod' || o.paymentMethod === 'cash') && (
                       <View style={styles.invoiceRow}>

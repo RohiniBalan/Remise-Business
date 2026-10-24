@@ -37,6 +37,7 @@ import { smartOrderApi } from '../../api/smartOrderApi';
 import { useTheme } from '../../context/ThemeContext';
 import { CustomerColors, Spacing, FontSizes, BorderRadius, Shadows } from '../../styles/theme';
 import StoreReviewModal from '../../components/common/StoreReviewModal';
+import MaskedCallButton from '../../components/common/MaskedCallButton';
 import { useTranslation, translateProductName, getSupplierTranslations } from '../../i18n';
 
 export default function OrderTrackingScreen() {
@@ -543,6 +544,14 @@ export default function OrderTrackingScreen() {
                 {order.store?.address ? (
                   <Text style={styles.addressDetail}>{order.store.address}</Text>
                 ) : null}
+                <View style={{ marginTop: 8 }}>
+                  <MaskedCallButton
+                    orderId={order.orderId || order._id}
+                    label="Call Store"
+                    color={isDark ? '#2DD4BF' : CustomerColors.teal700}
+                    style={{ alignSelf: 'flex-start' }}
+                  />
+                </View>
               </View>
             </View>
 
@@ -556,9 +565,6 @@ export default function OrderTrackingScreen() {
                 <Text style={styles.addressDetail}>
                   {order.deliveryAddress?.fullAddress || 'Address on file'}
                 </Text>
-                {order.customerPhone ? (
-                  <Text style={styles.phoneText}>📞 {order.customerPhone}</Text>
-                ) : null}
               </View>
               {order.deliveryAddress?.fullAddress ? (
                 <TouchableOpacity

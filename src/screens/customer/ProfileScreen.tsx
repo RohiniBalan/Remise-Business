@@ -721,22 +721,26 @@ export default function ProfileScreen() {
             </>
           )}
 
-          <TouchableOpacity
-            style={styles.quickMenuItem}
-            onPress={() => navigation.navigate('Orders')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.quickMenuIcon, { backgroundColor: isDark ? '#172554' : '#EFF6FF' }]}>
-              <Package size={18} color="#2563EB" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.quickMenuTitle}>{t('profile.quickOrdersTitle')}</Text>
-              <Text style={styles.quickMenuSub}>{t('profile.quickOrdersSub')}</Text>
-            </View>
-            <ChevronRight size={16} color={isDark ? '#9CA3AF' : CustomerColors.textSecondary} />
-          </TouchableOpacity>
+          {!(user?.role === 'home_business' || user?.role === 'whole_saler' || user?.role === 'wholesaler') && (
+            <>
+              <TouchableOpacity
+                style={styles.quickMenuItem}
+                onPress={() => navigation.navigate('Orders')}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.quickMenuIcon, { backgroundColor: isDark ? '#172554' : '#EFF6FF' }]}>
+                  <Package size={18} color="#2563EB" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.quickMenuTitle}>{t('profile.quickOrdersTitle')}</Text>
+                  <Text style={styles.quickMenuSub}>{t('profile.quickOrdersSub')}</Text>
+                </View>
+                <ChevronRight size={16} color={isDark ? '#9CA3AF' : CustomerColors.textSecondary} />
+              </TouchableOpacity>
 
-          <View style={styles.quickMenuDivider} />
+              <View style={styles.quickMenuDivider} />
+            </>
+          )}
 
           <TouchableOpacity
             style={styles.quickMenuItem}

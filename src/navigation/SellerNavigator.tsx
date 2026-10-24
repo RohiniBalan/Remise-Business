@@ -144,10 +144,6 @@ function SellerUserMenu() {
                 <UserIcon size={15} color={isDark ? '#9CA3AF' : '#9CA3AF'} />
                 <Text style={styles.menuItemText}>{t('common.myProfile') || 'My Profile'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={() => go('Orders')}>
-                <ShoppingBag size={15} color={isDark ? '#9CA3AF' : '#9CA3AF'} />
-                <Text style={styles.menuItemText}>{t('common.myOrders') || 'My Orders'}</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={() => go('SellerTabs')}>
                 <Store size={15} color={isDark ? '#9CA3AF' : '#9CA3AF'} />
                 <Text style={styles.menuItemText}>{t('store.myStore') || 'My Store'}</Text>

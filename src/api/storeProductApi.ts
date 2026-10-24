@@ -8,7 +8,8 @@ import { gatewayClient } from './client';
 export const storeProductApi = {
   getAll: () => gatewayClient.get('/api/products'),
   getById: (id: string) => gatewayClient.get(`/api/products/${id}`),
-  getByStore: (storeId: string) => gatewayClient.get(`/api/products/store/${storeId}`),
+  getByStore: (storeId: string, params?: Record<string, string | number>) =>
+    gatewayClient.get(`/api/products/store/${storeId}`, { params }),
   getCategories: () => gatewayClient.get('/api/categories'),
   create: (data: FormData | any) => {
     if (data instanceof FormData || (data && typeof data.append === 'function')) {

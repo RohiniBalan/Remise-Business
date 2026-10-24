@@ -109,7 +109,7 @@ export function SellerDashboardProvider({ children }: { children: React.ReactNod
     }
 
     const [prodRes, catRes, ordRes, offRes] = await Promise.allSettled([
-      storeProductApi.getByStore(s._id),
+      storeProductApi.getByStore(s._id, { limit: 200 }),
       storeProductApi.getCategories(),
       sellerOrderApi.getStoreOrders(s._id),
       offersApi.getByStore(s._id),

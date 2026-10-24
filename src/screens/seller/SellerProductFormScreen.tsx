@@ -32,6 +32,7 @@ import {
 } from 'lucide-react-native';
 import { launchCamera, launchImageLibrary, Asset } from 'react-native-image-picker';
 import ImageCropModal, { CroppedImageResult } from '../../components/common/ImageCropModal';
+import SuccessModal from '../../components/common/SuccessModal';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSellerDashboard } from '../../context/SellerDashboardContext';
 import { useAuth } from '../../context/AuthContext';
@@ -173,6 +174,7 @@ export default function SellerProductFormScreen() {
   const [showCropModal, setShowCropModal] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [error, setError] = useState('');
   const [aiAutofilling, setAiAutofilling] = useState(false);
   const [aiSuccessMsg, setAiSuccessMsg] = useState(scanned ? '✨ Product details auto-filled from scan!' : '');
@@ -705,7 +707,7 @@ export default function SellerProductFormScreen() {
       else await storeProductApi.create(fd);
 
       await refresh();
-      navigation.goBack();
+      setShowSuccessModal(true);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to save product.');
     } finally {
@@ -1357,6 +1359,25 @@ export default function SellerProductFormScreen() {
           setCropTarget(null);
         }}
         onRetake={handleRetakeCrop}
+      />
+
+      <SuccessModal
+        visible={showSuccessModal}
+        title={isEdit ? 'Product Updated' : 'Product Added'}
+        message={
+          isEdit
+            ? 'Your changes have been saved successfully.'
+            : 'Your product has been added to the catalog.'
+        }
+        buttonText={t('common.done') || 'Done'}
+        onPressButton={() => {
+          setShowSuccessModal(false);
+          navigation.goBack();
+        }}
+        onClose={() => {
+          setShowSuccessModal(false);
+          navigation.goBack();
+        }}
       />
     </ScrollView>
   );

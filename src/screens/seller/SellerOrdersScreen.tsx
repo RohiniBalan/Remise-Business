@@ -7,6 +7,7 @@ import { sellerOrderApi } from '../../api/sellerApi';
 import { CustomerColors, Spacing, FontSizes, BorderRadius } from '../../styles/theme';
 import PaginationControl from '../../components/common/PaginationControl';
 import DeliveryFlowModal from '../../components/store/DeliveryFlowModal';
+import MaskedCallButton from '../../components/common/MaskedCallButton';
 import { useTheme } from '../../context/ThemeContext';
 import { useTranslation, translateProductName } from '../../i18n';
 
@@ -215,7 +216,7 @@ export default function SellerOrdersScreen() {
                       </View>
                     ) : null}
                   </View>
-                  <Text style={styles.email}>{(o as any).user?.email || (o as any).shippingAddress?.phone}</Text>
+                  <Text style={styles.email}>{(o as any).user?.email || (o as any).buyerName || ''}</Text>
                   {o.items?.map((it: any, i: number) => (
                     <Text key={i} style={styles.itemLine}>
                       {it.quantity}× {translateProductName(it.title, language)} {it.tierLabel ? `(${it.tierLabel})` : ''} — ₹{it.price}/unit
@@ -248,6 +249,12 @@ export default function SellerOrdersScreen() {
                       <Text style={styles.trackOrderBtnText}>{t('store.orderTracking') || 'Live Track'}</Text>
                     </TouchableOpacity>
                   )}
+
+                  <MaskedCallButton
+                    orderId={o.orderId || o._id}
+                    label="Call Buyer"
+                    color="#059669"
+                  />
 
                   {o.orderStatus !== 'Cancelled' && o.orderStatus !== 'Delivered' && currentDeliveryStatus !== 'Delivered' && (
                     <TouchableOpacity

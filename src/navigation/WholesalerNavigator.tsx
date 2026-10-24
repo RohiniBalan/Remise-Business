@@ -199,10 +199,6 @@ function WholesalerUserMenu() {
                 <UserIcon size={15} color="#9CA3AF" />
                 <Text style={styles.menuItemText}>{t('common.myProfile') || 'My Profile'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={() => go('Orders')}>
-                <ShoppingBag size={15} color="#9CA3AF" />
-                <Text style={styles.menuItemText}>{t('common.myOrders') || 'My Orders'}</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={() => go('WholesalerTabs')}>
                 <Store size={15} color="#9CA3AF" />
                 <Text style={styles.menuItemText}>{t('store.wholesalerDashboard') || 'Wholesale Dashboard'}</Text>

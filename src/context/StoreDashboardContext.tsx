@@ -169,7 +169,7 @@ export function StoreDashboardProvider({ children }: { children: React.ReactNode
         offersApi.getByStore(s._id),
         offersApi.getStoreOrders(s._id),
         smartOrderApi.getStoreOrders(s._id),
-        storeProductApi.getByStore(s._id),
+        storeProductApi.getByStore(s._id, { limit: 200 }),
         storeProductApi.getCategories(),
       ]);
 
