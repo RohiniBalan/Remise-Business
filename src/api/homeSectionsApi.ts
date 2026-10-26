@@ -31,6 +31,9 @@ export interface BestSellerItem {
   soldCount?: number;
   badge?: string;
   totalStock?: number;
+  storeId?: string;
+  ownerRole?: string;
+  storeType?: string;
   raw?: any;
 }
 
@@ -110,6 +113,9 @@ export function mapProduct(p: any): BestSellerItem {
     soldCount: p.soldCount,
     badge: 'Best Seller',
     totalStock: p.totalStock,
+    storeId: p.storeId,
+    ownerRole: p.ownerRole,
+    storeType: p.storeType,
     raw: p,
   };
 }

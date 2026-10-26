@@ -397,6 +397,9 @@ export default function NewArrivalsScreen() {
       quantity: 1,
       image: productImage(p) || '',
       totalStock: p.totalStock,
+      storeId: p.storeId,
+      ownerRole: (p as any).ownerRole,
+      storeType: (p as any).storeType,
     });
     showToast(txt.addedToCart);
   };
@@ -414,6 +417,9 @@ export default function NewArrivalsScreen() {
       quantity: 1,
       image: productImage(p) || '',
       totalStock: p.totalStock,
+      storeId: p.storeId,
+      ownerRole: (p as any).ownerRole,
+      storeType: (p as any).storeType,
     });
     navigation.navigate('Checkout');
   };

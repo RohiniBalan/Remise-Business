@@ -32,6 +32,7 @@ import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { creditApi } from '../../api/creditApi';
 import { storeApi } from '../../api/storeApi';
+import { gatewayClient } from '../../api/client';
 import {
   paymentApi,
   PAYMENT_RETURN_SENTINEL,
@@ -118,6 +119,7 @@ export default function CheckoutScreen() {
   }, [itemsToCheckout]);
 
   const [storeDetails, setStoreDetails] = useState<any>(null);
+  const [resolvedProductRoles, setResolvedProductRoles] = useState<Record<string, { ownerRole?: string; storeId?: string; storeType?: string }>>({});
 
   useEffect(() => {
     if (primaryStoreId) {
@@ -126,6 +128,35 @@ export default function CheckoutScreen() {
       }).catch(() => {});
     }
   }, [primaryStoreId]);
+
+  // Fallback: If any item in itemsToCheckout lacks ownerRole or storeId, resolve from product API
+  useEffect(() => {
+    (itemsToCheckout as any[]).forEach((it: any) => {
+      const pId = it.id || it._id;
+      if (pId && (!it.ownerRole || !it.storeId || !it.storeType)) {
+        gatewayClient.get(`/api/products/${pId}`)
+          .then((res: any) => {
+            const pData = res.data?.data || res.data;
+            if (pData) {
+              setResolvedProductRoles(prev => ({
+                ...prev,
+                [pId]: {
+                  ownerRole: pData.ownerRole,
+                  storeId: pData.storeId,
+                  storeType: pData.storeType,
+                },
+              }));
+              if (pData.storeId && !primaryStoreId) {
+                storeApi.getById(pData.storeId).then((sRes: any) => {
+                  if (sRes.data?.data) setStoreDetails(sRes.data.data);
+                }).catch(() => {});
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    });
+  }, [itemsToCheckout, primaryStoreId]);
 
   const isStockOrder = useMemo(() => {
     if (user?.role !== 'store_owner') return false;
@@ -147,12 +178,14 @@ export default function CheckoutScreen() {
       return true;
     }
     return (itemsToCheckout as any[]).some(
-      (item: any) =>
-        item.ownerRole === 'home_business' ||
-        item.supplierRole === 'home_business' ||
-        item.storeType === 'home_business'
+      (item: any) => {
+        const pId = item.id || item._id;
+        const resolved = resolvedProductRoles[pId];
+        const role = item.ownerRole || item.supplierRole || item.storeType || resolved?.ownerRole || resolved?.storeType;
+        return role === 'home_business';
+      }
     );
-  }, [storeDetails, itemsToCheckout]);
+  }, [storeDetails, itemsToCheckout, resolvedProductRoles]);
 
   useEffect(() => {
     if (isStockOrder || isHomeBusinessOrder) {

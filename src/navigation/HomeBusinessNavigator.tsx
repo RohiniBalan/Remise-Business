@@ -531,6 +531,7 @@ const getStyles = (isDark: boolean) => StyleSheet.create({
     fontSize: FontSizes.lg,
     fontWeight: '700',
     color: isDark ? '#F9FAFB' : CustomerColors.black,
+    textAlign: 'center',
     marginTop: 8,
   },
   noStoreSubtitle: {
