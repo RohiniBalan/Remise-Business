@@ -10,6 +10,7 @@ import {
   Share,
   ScrollView,
   Linking,
+  Alert,
 } from 'react-native';
 import {
   X,
@@ -109,6 +110,33 @@ export default function DeliveryFlowModal({
   const [deliveryUrl, setDeliveryUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [estimatedCost, setEstimatedCost] = useState<number | null>(null);
+  const [estimatedEta, setEstimatedEta] = useState<string | null>(null);
+
+  const orderId = order?.orderId || order?._id || order?.id || '';
+
+  // Dynamic serviceability check when confirming Shadowfax request
+  useEffect(() => {
+    if (stage === 'confirm_remise_request' && orderId) {
+      smartOrderApi
+        .checkShadowfaxServiceability(orderId, {
+          dropLatitude: order.shippingAddress?.latitude,
+          dropLongitude: order.shippingAddress?.longitude,
+        })
+        .then((res: any) => {
+          if (res.data?.success && res.data.data) {
+            const data = res.data.data;
+            if (data.delivery_cost != null && data.delivery_cost > 0) {
+              setEstimatedCost(data.delivery_cost);
+            }
+            if (data.pickup_eta) {
+              setEstimatedEta(`${data.pickup_eta} mins`);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [stage, orderId]);
 
   useEffect(() => {
     if (visible && order) {
@@ -168,7 +196,6 @@ export default function DeliveryFlowModal({
 
   if (!visible || !order) return null;
 
-  const orderId = order.orderId || order._id || order.id || '';
   const displayOrderId =
     order.orderId && !order.orderId.match(/^[0-9a-fA-F]{24}$/)
       ? order.orderId
@@ -276,6 +303,8 @@ export default function DeliveryFlowModal({
         const res = await smartOrderApi.requestRemiseDelivery(orderId, {
           pickupAddress: order.storeName || 'Store Location',
           dropAddress,
+          dropLatitude: order.shippingAddress?.latitude,
+          dropLongitude: order.shippingAddress?.longitude,
         });
 
         if (res.data?.success) {
@@ -311,7 +340,56 @@ export default function DeliveryFlowModal({
     }
   };
 
-  // Self arrange
+  // Cancel Shadowfax delivery request
+  const handleCancelShadowfaxDelivery = async () => {
+    Alert.alert(
+      'Cancel Delivery',
+      'Are you sure you want to cancel the Shadowfax delivery for this order?',
+      [
+        { text: 'Keep Delivery', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await smartOrderApi.cancelShadowfaxDelivery(orderId, 'Cancelled by store owner');
+              setStage('initial');
+              if (onRefresh) onRefresh();
+            } catch (err: any) {
+              Alert.alert(
+                'Error',
+                err?.response?.data?.message || err?.message || 'Failed to cancel delivery',
+              );
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // Retry Shadowfax delivery for unassigned / failed orders
+  const handleRetryShadowfax = async () => {
+    try {
+      setLoading(true);
+      setErrorMessage('');
+      const res = await smartOrderApi.retryShadowfaxDelivery(orderId);
+      if (res.data?.success) {
+        setStage('searching');
+        if (onRefresh) onRefresh();
+      } else {
+        setErrorMessage(res.data?.message || 'Retry failed');
+      }
+    } catch (err: any) {
+      setErrorMessage(
+        err?.response?.data?.message || err?.message || 'Failed to retry delivery',
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
   const handleSelfArrange = async () => {
     try {
       setLoading(true);
@@ -594,7 +672,7 @@ export default function DeliveryFlowModal({
                       }}
                     >
                       <Text style={styles.optionTitlePrimary}>
-                        {tDeliv.requestRemisePartnerTitle}
+                        {tDeliv.requestRemisePartnerTitle} (Shadowfax)
                       </Text>
                       <Text
                         style={{
@@ -770,9 +848,15 @@ export default function DeliveryFlowModal({
                         { fontSize: 14, fontWeight: '900', color: '#4F46E5' },
                       ]}
                     >
-                      ₹45
+                      {estimatedCost != null ? `₹${estimatedCost}` : '₹45'}
                     </Text>
                   </View>
+                  {estimatedEta && (
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Estimated Pickup</Text>
+                      <Text style={[styles.summaryValue, { color: '#059669', fontWeight: '700' }]}>{estimatedEta}</Text>
+                    </View>
+                  )}
                 </View>
 
                 <TouchableOpacity
@@ -846,6 +930,22 @@ export default function DeliveryFlowModal({
                     <Text style={styles.doneBtnText}>{tDeliv.close}</Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* Cancel Shadowfax Request */}
+                <TouchableOpacity
+                  style={{
+                    marginTop: 12,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={handleCancelShadowfaxDelivery}
+                  disabled={loading}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#EF4444' }}>
+                    Cancel Delivery Request
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
 
